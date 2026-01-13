@@ -204,18 +204,24 @@ export async function POST(request: Request) {
     }
 
     // User profile
+    type UserProfileRow = {
+      email: string | null;
+      full_name: string | null;
+      timezone: string | null;
+    };
+    
     const { data: userProfile, error: profileErr } = await supabase
       .from("users")
       .select("email, full_name, timezone")
       .eq("id", user!.id)
-      .single();
-
+      .single<UserProfileRow>();
+    
     if (profileErr) {
       console.error("profileErr:", profileErr);
     }
 
     // Date: use requested YYYY-MM-DD (cron passes), else "today" in user's timezone
-    const userTimezone = userProfile?.timezone || "America/New_York";
+    const userTimezone = userProfile?.timezone ?? "America/New_York";
 
     let today: Date;
     if (requestedDateStr) {
