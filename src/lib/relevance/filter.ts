@@ -7,9 +7,69 @@ import { Asset, NewsItem } from '@/types/database';
  *
  * Matches news articles to assets using multiple strategies:
  * 1. Direct symbol mention ($AAPL, AAPL)
- * 2. Keyword matching (company names, products)
- * 3. LLM-assisted inference (for ambiguous cases)
+ * 2. Company/Fund name matching (full and partial)
+ * 3. Fund family matching (e.g., "Fidelity" matches "Fidelity Contrafund")
+ * 4. Keyword matching
+ * 5. Fund-specific matching for mutual funds/ETFs
  */
+
+// Map fund ticker prefixes to their families for matching
+const FUND_FAMILY_PATTERNS: Record<string, string[]> = {
+  // Fidelity funds (typically start with F)
+  'FC': ['fidelity', 'fidelity contrafund'],
+  'FD': ['fidelity'],
+  'FS': ['fidelity', 'fidelity select'],
+  'FI': ['fidelity'],
+  'FX': ['fidelity'],
+  // T. Rowe Price (typically start with PR or TR)
+  'PR': ['t. rowe price', 't rowe price', 'rowe price'],
+  'TR': ['t. rowe price', 't rowe price'],
+  // Vanguard (typically start with V)
+  'VF': ['vanguard'],
+  'VI': ['vanguard', 'vanguard index'],
+  'VT': ['vanguard', 'vanguard total'],
+  'VO': ['vanguard'],
+  'VG': ['vanguard'],
+  // Schwab
+  'SW': ['schwab', 'charles schwab'],
+  'SC': ['schwab'],
+  // BlackRock/iShares
+  'BL': ['blackrock', 'ishares'],
+  'IS': ['ishares', 'blackrock'],
+  // American Funds
+  'AM': ['american funds', 'capital group'],
+  // PIMCO
+  'PI': ['pimco'],
+  'PM': ['pimco'],
+};
+
+/**
+ * Extract searchable terms from asset name
+ * e.g., "Fidelity Contrafund" -> ["Fidelity Contrafund", "Fidelity", "Contrafund"]
+ */
+function extractNameTerms(name: string): string[] {
+  const terms: string[] = [name];
+  
+  // Clean common suffixes
+  const cleanName = name.replace(/\s+(Inc\.|Corp\.|Corporation|Ltd\.|LLC|Co\.|Fund|Index|ETF)$/i, '').trim();
+  if (cleanName !== name) {
+    terms.push(cleanName);
+  }
+  
+  // Split into individual words (at least 4 chars to be meaningful)
+  const words = cleanName.split(/\s+/).filter(w => w.length >= 4);
+  terms.push(...words);
+  
+  // Known fund families
+  const fundFamilies = ['Fidelity', 'Vanguard', 'BlackRock', 'Schwab', 'PIMCO', 'T. Rowe Price', 'JPMorgan', 'Franklin', 'Templeton'];
+  for (const family of fundFamilies) {
+    if (name.toLowerCase().includes(family.toLowerCase())) {
+      terms.push(family);
+    }
+  }
+  
+  return [...new Set(terms)]; // Dedupe
+}
 
 /**
  * Find all relevant assets for a news item using rule-based matching
@@ -44,7 +104,6 @@ export function findRelevantAssets(
     // Check for bare symbol (with word boundaries)
     const bareSymbolPattern = new RegExp(`\\b${asset.symbol}\\b`, 'i');
     if (bareSymbolPattern.test(textToSearch) && asset.symbol.length >= 2) {
-      // Lower confidence for bare symbols (could be acronyms)
       if (!matchedTerms.includes(asset.symbol)) {
         matchedTerms.push(asset.symbol);
         highestScore = Math.max(highestScore, 0.7);
@@ -52,47 +111,80 @@ export function findRelevantAssets(
       }
     }
 
-    // Strategy 2: Company name matching
-    const cleanAssetName = asset.name.replace(/\s+(Inc\.|Corp\.|Corporation|Ltd\.|LLC|Co\.)$/i, '').trim();
-    const cleanAssetNameLower = cleanAssetName.toLowerCase();
-    const companyNameLower = asset.name.toLowerCase();
-    
-    if (textToSearch.includes(cleanAssetNameLower) || textToSearch.includes(companyNameLower)) {
-      matchedTerms.push(cleanAssetName);
-      highestScore = Math.max(highestScore, 0.85);
+    // Strategy 2: Company/Fund name matching (ENHANCED)
+    const nameTerms = extractNameTerms(asset.name);
+    for (const term of nameTerms) {
+      const termLower = term.toLowerCase();
+      if (termLower.length >= 4 && textToSearch.includes(termLower)) {
+        matchedTerms.push(term);
+        // Full name matches get higher score than partial
+        const score = term === asset.name ? 0.90 : (term.length >= 8 ? 0.80 : 0.70);
+        highestScore = Math.max(highestScore, score);
+      }
     }
 
     // Check mentioned entities
     if (newsItem.mentioned_entities?.some((e) => {
       const entityLower = e.toLowerCase();
-      return entityLower === cleanAssetNameLower || entityLower === companyNameLower || cleanAssetNameLower.includes(entityLower) || entityLower.includes(cleanAssetNameLower);
+      return nameTerms.some(term => {
+        const termLower = term.toLowerCase();
+        return entityLower === termLower || entityLower.includes(termLower) || termLower.includes(entityLower);
+      });
     })) {
-      if (!matchedTerms.includes(cleanAssetName)) {
-        matchedTerms.push(cleanAssetName);
-        highestScore = Math.max(highestScore, 0.85);
-      }
+      matchedTerms.push(asset.name);
+      highestScore = Math.max(highestScore, 0.85);
     }
 
     // Strategy 3: Keyword matching
     if (asset.keywords && asset.keywords.length > 0) {
       for (const keyword of asset.keywords) {
         const keywordLower = keyword.toLowerCase();
-        if (textToSearch.includes(keywordLower)) {
+        if (keywordLower.length >= 3 && textToSearch.includes(keywordLower)) {
           matchedTerms.push(keyword);
-          // Keywords have varying relevance
           const keywordScore = calculateKeywordScore(keyword, textToSearch);
           highestScore = Math.max(highestScore, keywordScore);
         }
       }
     }
 
-    // Only add if we found matches
-    if (matchedTerms.length > 0 && highestScore > 0.3) {
+    // Strategy 4: Fund family matching for mutual funds/ETFs
+    // Check if this asset's symbol prefix matches a known fund family
+    const symbolPrefix = asset.symbol.slice(0, 2).toUpperCase();
+    const fundFamilyTerms = FUND_FAMILY_PATTERNS[symbolPrefix];
+    if (fundFamilyTerms) {
+      for (const familyTerm of fundFamilyTerms) {
+        if (textToSearch.includes(familyTerm.toLowerCase())) {
+          matchedTerms.push(`Fund family: ${familyTerm}`);
+          highestScore = Math.max(highestScore, 0.65); // Lower score for family-only match
+          if (matchType === 'keyword_match') matchType = 'keyword_match';
+        }
+      }
+    }
+
+    // Strategy 5: ETF/Index fund general matching
+    // If asset looks like an ETF (3-4 letter symbol), match general ETF news
+    if (asset.symbol.length <= 4 && !asset.symbol.endsWith('X')) {
+      const etfTerms = ['etf', 'exchange traded fund', 'index fund'];
+      for (const term of etfTerms) {
+        if (textToSearch.includes(term)) {
+          // Only match if the article is about ETFs in general AND mentions related keywords
+          const relatedTerms = ['market', 'investment', 'portfolio', 'fund', 'index'];
+          const hasRelated = relatedTerms.some(r => textToSearch.includes(r));
+          if (hasRelated) {
+            matchedTerms.push(`ETF news: ${term}`);
+            highestScore = Math.max(highestScore, 0.45); // Lower score for general ETF news
+          }
+        }
+      }
+    }
+
+    // LOWER threshold for matches (be more inclusive)
+    if (matchedTerms.length > 0 && highestScore > 0.25) {
       matches.push({
         assetId: asset.id,
         matchType,
         relevanceScore: Math.min(highestScore, 1.0),
-        matchedTerms: [...new Set(matchedTerms)], // Dedupe
+        matchedTerms: [...new Set(matchedTerms)],
       });
     }
   }
@@ -241,7 +333,9 @@ export async function processAllUnprocessedNews(): Promise<{
 export async function getRelevantNewsForUser(
   userId: string,
   hoursBack: number = 24,
-  limit: number = 50
+  limit: number = 50,
+  portfolioId?: string,
+  supabaseClient?: any
 ): Promise<
   {
     assetId: string;
@@ -256,21 +350,24 @@ export async function getRelevantNewsForUser(
       publishedAt: string;
       relevanceScore: number;
       matchType: string;
+      matchedTerms?: string[];
     }[];
   }[]
 > {
-  const supabase = createServerClient();
+  // Use provided client or create default server client
+  const supabase = supabaseClient || createServerClient();
 
   const cutoffDate = new Date();
   cutoffDate.setHours(cutoffDate.getHours() - hoursBack);
 
-  // Get user's tracked assets
-  const { data: userAssets, error: userAssetsError } = await supabase
+  // Get user's tracked assets (optionally filtered by portfolio)
+  let assetsQuery = supabase
     .from('user_assets')
     .select(
       `
       asset_id,
       importance_level,
+      portfolio_id,
       assets!inner (
         id,
         symbol,
@@ -279,6 +376,13 @@ export async function getRelevantNewsForUser(
     `
     )
     .eq('user_id', userId);
+
+  // Apply portfolio filter if provided
+  if (portfolioId) {
+    assetsQuery = assetsQuery.eq('portfolio_id', portfolioId);
+  }
+
+  const { data: userAssets, error: userAssetsError } = await assetsQuery;
 
   if (userAssetsError || !userAssets) {
     console.error('Error fetching user assets:', userAssetsError);
@@ -311,6 +415,7 @@ export async function getRelevantNewsForUser(
         `
         relevance_score,
         match_type,
+        matched_terms,
         news_items!inner (
           id,
           title,
@@ -336,7 +441,7 @@ export async function getRelevantNewsForUser(
         assetId: asset.id,
         assetSymbol: asset.symbol,
         assetName: asset.name,
-        news: relevantNews.map((r) => {
+        news: relevantNews.map((r: any) => {
           const newsItem = r.news_items as unknown as {
             id: string;
             title: string;
@@ -354,6 +459,7 @@ export async function getRelevantNewsForUser(
             publishedAt: newsItem.published_at,
             relevanceScore: r.relevance_score,
             matchType: r.match_type,
+            matchedTerms: r.matched_terms || [],
           };
         }),
       });

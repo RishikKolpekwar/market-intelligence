@@ -19,11 +19,7 @@ export const FINANCIAL_RSS_FEEDS = [
     url: 'https://feeds.marketwatch.com/marketwatch/topstories/',
     credibility: 7,
   },
-  {
-    name: 'MarketWatch Stocks',
-    url: 'https://feeds.marketwatch.com/marketwatch/StockstoWatch/',
-    credibility: 7,
-  },
+  // MarketWatch Stocks removed - returns 403 Forbidden
   {
     name: 'MarketWatch Breaking',
     url: 'https://feeds.marketwatch.com/marketwatch/marketpulse/',
@@ -69,11 +65,7 @@ export const FINANCIAL_RSS_FEEDS = [
     url: 'https://seekingalpha.com/market_currents.xml',
     credibility: 6,
   },
-  {
-    name: 'SeekingAlpha Top Ideas',
-    url: 'https://seekingalpha.com/tag/top-ideas.xml',
-    credibility: 6,
-  },
+  // SeekingAlpha Top Ideas removed - returns 404 Not Found
   // Reuters
   {
     name: 'Reuters Business',
@@ -98,6 +90,52 @@ export const FINANCIAL_RSS_FEEDS = [
     url: 'https://news.google.com/rss/search?q=site:barrons.com&hl=en-US&gl=US&ceid=US:en',
     credibility: 8,
   },
+  
+  // ========== MUTUAL FUND & ETF SPECIFIC FEEDS ==========
+  // Fund Family News via Google News
+  {
+    name: 'Fidelity Funds News',
+    url: 'https://news.google.com/rss/search?q=Fidelity+funds+OR+Fidelity+mutual+fund+OR+Fidelity+investment&hl=en-US&gl=US&ceid=US:en',
+    credibility: 7,
+  },
+  {
+    name: 'Vanguard Funds News',
+    url: 'https://news.google.com/rss/search?q=Vanguard+funds+OR+Vanguard+ETF+OR+Vanguard+index+fund&hl=en-US&gl=US&ceid=US:en',
+    credibility: 7,
+  },
+  {
+    name: 'T Rowe Price News',
+    url: 'https://news.google.com/rss/search?q=%22T.+Rowe+Price%22+OR+%22T+Rowe+Price%22+funds&hl=en-US&gl=US&ceid=US:en',
+    credibility: 7,
+  },
+  {
+    name: 'Schwab Funds News',
+    url: 'https://news.google.com/rss/search?q=Schwab+funds+OR+Schwab+ETF+OR+Charles+Schwab+fund&hl=en-US&gl=US&ceid=US:en',
+    credibility: 7,
+  },
+  {
+    name: 'BlackRock iShares News',
+    url: 'https://news.google.com/rss/search?q=BlackRock+OR+iShares+ETF&hl=en-US&gl=US&ceid=US:en',
+    credibility: 8,
+  },
+  // ETF-specific news
+  {
+    name: 'ETF News',
+    url: 'https://news.google.com/rss/search?q=ETF+OR+%22exchange+traded+fund%22&hl=en-US&gl=US&ceid=US:en',
+    credibility: 6,
+  },
+  {
+    name: 'Morningstar News',
+    url: 'https://news.google.com/rss/search?q=site:morningstar.com&hl=en-US&gl=US&ceid=US:en',
+    credibility: 8,
+  },
+  // Index Fund news
+  {
+    name: 'Index Fund News',
+    url: 'https://news.google.com/rss/search?q=%22index+fund%22+OR+%22S%26P+500+fund%22+OR+%22total+market+fund%22&hl=en-US&gl=US&ceid=US:en',
+    credibility: 6,
+  },
+  
   // Financial Times via Google News
   {
     name: 'Financial Times',

@@ -1,236 +1,315 @@
 /**
- * Symbol Lookup Service
- * Auto-detects asset type (stock/ETF/mutual fund) from ticker symbol
- * Uses Finnhub and Yahoo Finance APIs for metadata
+ * Symbol Lookup + Quotes (Yahoo-first, Finnhub fallback)
+ * Also exposes Yahoo historical close helpers for 1M / 1Y changes.
  */
 
-import { createServerClient } from '@/lib/supabase/client';
+import { createServerClient } from "@/lib/supabase/client";
+import { generateAssetKeywords } from "@/lib/utils/asset-type-detector";
 
 export interface SymbolLookupResult {
   symbol: string;
   name: string;
-  type: 'stock' | 'etf' | 'mutual_fund' | 'crypto' | 'index';
+  type: "stock" | "etf" | "mutual_fund" | "crypto" | "index";
   exchange?: string;
   currency?: string;
   country?: string;
-  confidence: number; // 0-1, how confident we are in the type detection
+  confidence: number;
 }
 
 export interface SymbolQuote {
   symbol: string;
   name: string;
-  type: 'stock' | 'etf' | 'mutual_fund' | 'crypto' | 'index';
-  currentPrice: number;
-  previousClose: number;
-  change: number;
-  changePercent: number;
-  dayHigh: number;
-  dayLow: number;
-  week52High: number;
-  week52Low: number;
-  volume: number;
-  avgVolume?: number;
-  marketCap?: number;
-  peRatio?: number;
-  dividendYield?: number;
-  // Mutual fund specific
-  nav?: number;
-  navChange?: number;
+  type: "stock" | "etf" | "mutual_fund" | "crypto" | "index";
   exchange?: string;
   sector?: string;
+
+  currentPrice: number | null;
+  previousClose: number | null;
+  change: number | null;
+  changePercent: number | null;
+
+  dayHigh: number | null;
+  dayLow: number | null;
+  week52High: number | null;
+  week52Low: number | null;
+  volume: number | null;
+  marketCap?: number | null;
+
+  // Optional extras
+  nav?: number | null;
+  navChange?: number | null;
 }
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
-const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
-/**
- * Detect asset type from symbol patterns and metadata
- */
-function inferAssetType(symbol: string, metadata?: any): 'stock' | 'etf' | 'mutual_fund' | 'crypto' | 'index' {
-  const upperSymbol = symbol.toUpperCase();
-  
-  // Common ETF patterns
-  const etfPatterns = [
-    /^SPY$/, /^QQQ$/, /^IWM$/, /^DIA$/, /^VTI$/, /^VOO$/, /^VEA$/,
-    /^IVV$/, /^AGG$/, /^BND$/, /^GLD$/, /^SLV$/, /^USO$/,
-    /^XL[A-Z]$/, // Sector SPDRs (XLF, XLK, etc.)
-    /^I[A-Z]{2,3}$/, // iShares pattern
-    /^V[A-Z]{2,3}$/, // Vanguard pattern
-  ];
-  
-  // Mutual fund patterns (typically 5 characters ending in X)
-  const mutualFundPatterns = [
-    /^[A-Z]{4}X$/, // Most mutual funds: VFIAX, FXAIX, etc.
-    /^[A-Z]{3}[A-Z]{2}$/, // Some variations
-  ];
-  
-  // Crypto patterns
-  const cryptoPatterns = [
-    /^BTC/, /^ETH/, /^DOGE/, /^SOL/, /^ADA/,
-    /-USD$/, /-EUR$/, /-GBP$/,
-  ];
-  
-  // Index patterns
-  const indexPatterns = [
-    /^\^/, // Starts with ^ (^GSPC, ^DJI, etc.)
-    /^\./, // Starts with . (.DJI, etc.)
-  ];
-  
-  // Check patterns
-  if (indexPatterns.some(p => p.test(upperSymbol))) return 'index';
-  if (cryptoPatterns.some(p => p.test(upperSymbol))) return 'crypto';
-  if (mutualFundPatterns.some(p => p.test(upperSymbol))) return 'mutual_fund';
-  if (etfPatterns.some(p => p.test(upperSymbol))) return 'etf';
-  
-  // Check metadata if available
-  if (metadata?.type) {
-    const typeStr = metadata.type.toLowerCase();
-    if (typeStr.includes('etf') || typeStr.includes('exchange traded')) return 'etf';
-    if (typeStr.includes('mutual') || typeStr.includes('fund')) return 'mutual_fund';
-    if (typeStr.includes('crypto')) return 'crypto';
-    if (typeStr.includes('index')) return 'index';
-  }
-  
-  // Default to stock
-  return 'stock';
+/** -----------------------
+ *  Small helpers
+ * ----------------------*/
+function safeNum(x: any): number | null {
+  return typeof x === "number" && Number.isFinite(x) ? x : null;
 }
 
-/**
- * Search for symbols using Finnhub API
- */
-export async function searchSymbols(query: string): Promise<SymbolLookupResult[]> {
-  if (!FINNHUB_API_KEY) {
-    console.warn('FINNHUB_API_KEY not configured, using fallback');
-    return searchSymbolsFallback(query);
+function computeChange(currentPrice: number | null, previousClose: number | null) {
+  if (currentPrice == null || previousClose == null || previousClose === 0) {
+    return { change: null, changePercent: null };
   }
+  const change = currentPrice - previousClose;
+  const changePercent = (change / previousClose) * 100;
+  return { change, changePercent };
+}
 
-  // Check cache first
-  const supabase = createServerClient();
-  const { data: cached } = await supabase
-    .from('symbol_lookup_cache')
-    .select('results')
-    .eq('query', query.toLowerCase())
-    .eq('provider', 'finnhub')
-    .gt('expires_at', new Date().toISOString())
-    .single();
+function inferAssetType(
+  symbol: string,
+  metadata?: any
+): "stock" | "etf" | "mutual_fund" | "crypto" | "index" {
+  const upper = symbol.toUpperCase();
 
-  if (cached?.results) {
-    return cached.results as SymbolLookupResult[];
-  }
+  // Mutual funds commonly 5 letters ending with X: FCNTX, FXAIX, VFIAX
+  if (/^[A-Z]{4}X$/.test(upper)) return "mutual_fund";
+  if (/^\^/.test(upper) || /^\./.test(upper)) return "index";
+  if (/-USD$/.test(upper) || ["BTC", "ETH", "DOGE", "SOL", "ADA"].some(p => upper.startsWith(p))) return "crypto";
 
-  try {
-    const response = await fetch(
-      `https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&token=${FINNHUB_API_KEY}`
-    );
+  // ETF heuristics
+  if (
+    ["SPY","QQQ","IWM","DIA","VTI","VOO","VEA","IVV","AGG","BND","GLD","SLV","USO"].includes(upper) ||
+    /^XL[A-Z]$/.test(upper) ||
+    /^I[A-Z]{2,3}$/.test(upper) ||
+    /^V[A-Z]{2,3}$/.test(upper)
+  ) return "etf";
 
-    if (!response.ok) {
-      throw new Error(`Finnhub API error: ${response.status}`);
+  // Metadata hint
+  const mt = String(metadata?.quoteType || metadata?.type || "").toLowerCase();
+  if (mt.includes("etf")) return "etf";
+  if (mt.includes("mutual")) return "mutual_fund";
+  if (mt.includes("crypto")) return "crypto";
+  if (mt.includes("index")) return "index";
+
+  return "stock";
+}
+
+/** -----------------------
+ *  Yahoo: quote
+ * ----------------------*/
+async function fetchYahooQuote(symbol: string): Promise<SymbolQuote | null> {
+  const res = await fetch(
+    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) return null;
+
+  const json = await res.json();
+  const q = json?.quoteResponse?.result?.[0];
+  if (!q) return null;
+
+  const currentPrice =
+    safeNum(q?.regularMarketPrice) ??
+    safeNum(q?.postMarketPrice) ??
+    safeNum(q?.preMarketPrice);
+
+  const previousClose = safeNum(q?.regularMarketPreviousClose);
+
+  const { change, changePercent } = computeChange(currentPrice, previousClose);
+
+  const type = inferAssetType(symbol, q);
+
+  return {
+    symbol,
+    name: q?.longName || q?.shortName || symbol,
+    type,
+    exchange: q?.fullExchangeName || q?.exchange || undefined,
+    sector: undefined,
+
+    currentPrice,
+    previousClose,
+    change,
+    changePercent,
+
+    dayHigh: safeNum(q?.regularMarketDayHigh),
+    dayLow: safeNum(q?.regularMarketDayLow),
+    week52High: safeNum(q?.fiftyTwoWeekHigh),
+    week52Low: safeNum(q?.fiftyTwoWeekLow),
+    volume: safeNum(q?.regularMarketVolume),
+    marketCap: safeNum(q?.marketCap),
+
+    nav: safeNum(q?.navPrice) ?? null,
+    navChange: null,
+  };
+}
+
+/** -----------------------
+ *  Yahoo: historical closes (chart API)
+ *  Returns array of {ts, close}
+ * ----------------------*/
+type YahooClosePoint = { ts: number; close: number };
+
+async function fetchYahooDailyCloses(symbol: string, range: "1y" | "6mo" | "3mo" = "1y"): Promise<YahooClosePoint[] | null> {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d&includePrePost=false&events=div%7Csplit`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+
+  const json = await res.json();
+  const result = json?.chart?.result?.[0];
+  if (!result) return null;
+
+  const timestamps: number[] = result.timestamp || [];
+  const closes: (number | null)[] = result?.indicators?.quote?.[0]?.close || [];
+  if (!timestamps.length || !closes.length) return null;
+
+  const pts: YahooClosePoint[] = [];
+  for (let i = 0; i < Math.min(timestamps.length, closes.length); i++) {
+    const c = closes[i];
+    if (typeof c === "number" && Number.isFinite(c)) {
+      pts.push({ ts: timestamps[i], close: c });
     }
-
-    const data = await response.json();
-    
-    const results: SymbolLookupResult[] = (data.result || [])
-      .slice(0, 20)
-      .map((item: any) => ({
-        symbol: item.symbol,
-        name: item.description,
-        type: inferAssetType(item.symbol, item),
-        exchange: item.displaySymbol?.split(':')[0],
-        confidence: 0.8,
-      }));
-
-    // Cache the results for 24 hours
-    await supabase.from('symbol_lookup_cache').upsert({
-      query: query.toLowerCase(),
-      provider: 'finnhub',
-      results,
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    }, { onConflict: 'query,provider' });
-
-    return results;
-  } catch (error) {
-    console.error('Symbol search error:', error);
-    return searchSymbolsFallback(query);
   }
+  return pts.length ? pts : null;
 }
 
 /**
- * Fallback search using local database
+ * Get the close for the closest trading day ON OR BEFORE targetDate (UTC date).
+ * If none found, returns null.
  */
-async function searchSymbolsFallback(query: string): Promise<SymbolLookupResult[]> {
-  const supabase = createServerClient();
-  
-  const { data: assets } = await supabase
-    .from('assets')
-    .select('symbol, name, asset_type, exchange')
-    .or(`symbol.ilike.%${query}%,name.ilike.%${query}%`)
-    .eq('is_active', true)
-    .limit(20);
+export async function getYahooCloseOnOrBefore(symbol: string, targetDate: Date): Promise<number | null> {
+  const pts = await fetchYahooDailyCloses(symbol, "1y");
+  if (!pts) return null;
 
-  return (assets || []).map(a => ({
-    symbol: a.symbol,
-    name: a.name,
-    type: a.asset_type as any,
-    exchange: a.exchange || undefined,
-    confidence: 1.0, // High confidence since it's from our DB
-  }));
+  const targetTs = Math.floor(targetDate.getTime() / 1000);
+
+  // Yahoo timestamps are seconds at market close-ish. We want the last <= target.
+  let best: YahooClosePoint | null = null;
+  for (const p of pts) {
+    if (p.ts <= targetTs) best = p;
+    else break; // pts are chronological
+  }
+
+  // If chart points come unsorted (rare), sort once:
+  if (!best) {
+    const sorted = [...pts].sort((a, b) => a.ts - b.ts);
+    for (const p of sorted) {
+      if (p.ts <= targetTs) best = p;
+      else break;
+    }
+  }
+
+  return best ? best.close : null;
 }
 
 /**
- * Get full quote data for a symbol
+ * Convenience: compute 1M/1Y change vs historical closes.
+ * Uses 30d and 364d lookbacks, trading-day aware via "on or before".
+ * Note: 364 days (not 365) to ensure we stay within Yahoo's 1-year data range.
+ */
+export async function getYahooMonthYearChanges(symbol: string, currentPrice: number | null): Promise<{
+  monthChange: number | null;
+  monthChangePct: number | null;
+  yearChange: number | null;
+  yearChangePct: number | null;
+  monthAgoClose: number | null;
+  yearAgoClose: number | null;
+}> {
+  if (currentPrice == null) {
+    return {
+      monthChange: null, monthChangePct: null,
+      yearChange: null, yearChangePct: null,
+      monthAgoClose: null, yearAgoClose: null
+    };
+  }
+
+  const now = new Date();
+  const monthTarget = new Date(now);
+  monthTarget.setDate(monthTarget.getDate() - 30);
+
+  // Use 364 days instead of 365 to stay within Yahoo's 1-year data range
+  const yearTarget = new Date(now);
+  yearTarget.setDate(yearTarget.getDate() - 364);
+
+  const monthAgoClose = await getYahooCloseOnOrBefore(symbol, monthTarget);
+  const yearAgoClose = await getYahooCloseOnOrBefore(symbol, yearTarget);
+
+  const monthChange = monthAgoClose != null ? (currentPrice - monthAgoClose) : null;
+  const monthChangePct = (monthAgoClose != null && monthAgoClose !== 0) ? (monthChange! / monthAgoClose) * 100 : null;
+
+  const yearChange = yearAgoClose != null ? (currentPrice - yearAgoClose) : null;
+  const yearChangePct = (yearAgoClose != null && yearAgoClose !== 0) ? (yearChange! / yearAgoClose) * 100 : null;
+
+  return { monthChange, monthChangePct, yearChange, yearChangePct, monthAgoClose, yearAgoClose };
+}
+
+/** -----------------------
+ *  Finnhub fallback: quote + profile
+ * ----------------------*/
+async function fetchFinnhubQuote(symbol: string): Promise<SymbolQuote | null> {
+  if (!FINNHUB_API_KEY) return null;
+
+  const quoteRes = await fetch(
+    `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`,
+    { cache: "no-store" }
+  );
+  if (!quoteRes.ok) return null;
+  const quote = await quoteRes.json();
+
+  const profileRes = await fetch(
+    `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`,
+    { cache: "no-store" }
+  );
+  const profile = profileRes.ok ? await profileRes.json() : {};
+
+  const currentPrice = safeNum(quote?.c);
+  const previousClose = safeNum(quote?.pc);
+  const { change, changePercent } = computeChange(currentPrice, previousClose);
+
+  const type = inferAssetType(symbol, profile);
+
+  return {
+    symbol,
+    name: profile?.name || symbol,
+    type,
+    exchange: profile?.exchange || undefined,
+    sector: profile?.finnhubIndustry || undefined,
+
+    currentPrice,
+    previousClose,
+    change,
+    changePercent,
+
+    dayHigh: safeNum(quote?.h),
+    dayLow: safeNum(quote?.l),
+    week52High: safeNum(profile?.week52High) ?? safeNum(quote?.h),
+    week52Low: safeNum(profile?.week52Low) ?? safeNum(quote?.l),
+    volume: safeNum(quote?.v),
+    marketCap: profile?.marketCapitalization ? profile.marketCapitalization * 1_000_000 : null,
+
+    nav: null,
+    navChange: null,
+  };
+}
+
+function quoteLooksBad(q: SymbolQuote): boolean {
+  // If missing key fields, bad
+  if (q.currentPrice == null || q.previousClose == null) return true;
+  // If absurd daily move, likely bad mapping
+  if (q.changePercent != null && Math.abs(q.changePercent) > 40) return true;
+  // If prev close is 0 but current nonzero, bad
+  if (q.previousClose === 0 && q.currentPrice !== 0) return true;
+  return false;
+}
+
+/**
+ * Public: get full quote data for a symbol (Yahoo-first, Finnhub fallback)
  */
 export async function getSymbolQuote(symbol: string): Promise<SymbolQuote | null> {
-  if (!FINNHUB_API_KEY) {
-    console.warn('FINNHUB_API_KEY not configured');
-    return null;
-  }
+  // 1) Yahoo first
+  const y = await fetchYahooQuote(symbol);
+  if (y && !quoteLooksBad(y)) return y;
 
-  try {
-    // Fetch quote data
-    const quoteResponse = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`
-    );
+  // 2) Finnhub fallback
+  const f = await fetchFinnhubQuote(symbol);
+  if (f && !quoteLooksBad(f)) return f;
 
-    if (!quoteResponse.ok) {
-      throw new Error(`Quote API error: ${quoteResponse.status}`);
-    }
+  // 3) if Yahoo existed but “bad”, still return it rather than null
+  if (y) return y;
 
-    const quote = await quoteResponse.json();
-
-    // Fetch profile for additional metadata
-    const profileResponse = await fetch(
-      `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`
-    );
-
-    let profile: any = {};
-    if (profileResponse.ok) {
-      profile = await profileResponse.json();
-    }
-
-    // Detect type
-    const type = inferAssetType(symbol, profile);
-
-    return {
-      symbol,
-      name: profile.name || symbol,
-      type,
-      currentPrice: quote.c || 0,
-      previousClose: quote.pc || 0,
-      change: quote.d || 0,
-      changePercent: quote.dp || 0,
-      dayHigh: quote.h || 0,
-      dayLow: quote.l || 0,
-      week52High: profile.week52High || quote.h || 0,
-      week52Low: profile.week52Low || quote.l || 0,
-      volume: quote.v || 0,
-      marketCap: profile.marketCapitalization ? profile.marketCapitalization * 1000000 : undefined,
-      exchange: profile.exchange,
-      sector: profile.finnhubIndustry,
-    };
-  } catch (error) {
-    console.error(`Error fetching quote for ${symbol}:`, error);
-    return null;
-  }
+  return f;
 }
 
 /**
@@ -238,53 +317,114 @@ export async function getSymbolQuote(symbol: string): Promise<SymbolQuote | null
  */
 export async function getMultipleQuotes(symbols: string[]): Promise<Map<string, SymbolQuote>> {
   const quotes = new Map<string, SymbolQuote>();
-  
-  // Process in batches to respect rate limits
+
   const batchSize = 5;
   for (let i = 0; i < symbols.length; i += batchSize) {
     const batch = symbols.slice(i, i + batchSize);
-    
-    const results = await Promise.all(
-      batch.map(symbol => getSymbolQuote(symbol))
-    );
-    
-    results.forEach((quote, index) => {
-      if (quote) {
-        quotes.set(batch[index], quote);
-      }
+
+    const results = await Promise.all(batch.map((s) => getSymbolQuote(s)));
+
+    results.forEach((quote, idx) => {
+      if (quote) quotes.set(batch[idx], quote);
     });
-    
-    // Small delay between batches
+
     if (i + batchSize < symbols.length) {
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
-  
+
   return quotes;
+}
+
+/**
+ * Search symbols using Finnhub (unchanged behavior from your version)
+ * If no Finnhub key, fallback to local DB.
+ */
+export async function searchSymbols(query: string): Promise<SymbolLookupResult[]> {
+  if (!FINNHUB_API_KEY) return searchSymbolsFallback(query);
+
+  const supabase = createServerClient();
+  const { data: cached } = await supabase
+    .from("symbol_lookup_cache")
+    .select("results")
+    .eq("query", query.toLowerCase())
+    .eq("provider", "finnhub")
+    .gt("expires_at", new Date().toISOString())
+    .single();
+
+  if (cached?.results) return cached.results as SymbolLookupResult[];
+
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&token=${FINNHUB_API_KEY}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) throw new Error(`Finnhub API error: ${res.status}`);
+    const data = await res.json();
+
+    const results: SymbolLookupResult[] = (data.result || [])
+      .slice(0, 20)
+      .map((item: any) => ({
+        symbol: item.symbol,
+        name: item.description,
+        type: inferAssetType(item.symbol, item),
+        exchange: item.displaySymbol?.split(":")[0],
+        confidence: 0.8,
+      }));
+
+    await supabase.from("symbol_lookup_cache").upsert(
+      {
+        query: query.toLowerCase(),
+        provider: "finnhub",
+        results,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      },
+      { onConflict: "query,provider" }
+    );
+
+    return results;
+  } catch {
+    return searchSymbolsFallback(query);
+  }
+}
+
+async function searchSymbolsFallback(query: string): Promise<SymbolLookupResult[]> {
+  const supabase = createServerClient();
+  const { data: assets } = await supabase
+    .from("assets")
+    .select("symbol, name, asset_type, exchange")
+    .or(`symbol.ilike.%${query}%,name.ilike.%${query}%`)
+    .eq("is_active", true)
+    .limit(20);
+
+  return (assets || []).map((a: any) => ({
+    symbol: a.symbol,
+    name: a.name,
+    type: a.asset_type,
+    exchange: a.exchange || undefined,
+    confidence: 1.0,
+  }));
 }
 
 /**
  * Add or update an asset in the database with full metadata
  */
-export async function upsertAssetWithQuote(symbol: string): Promise<{ id: string; symbol: string; name: string; type: string } | null> {
+export async function upsertAssetWithQuote(
+  symbol: string
+): Promise<{ id: string; symbol: string; name: string; type: string } | null> {
   const supabase = createServerClient();
-  console.log('upsertAssetWithQuote called for symbol:', symbol); // Debug log
-  // First check if we already have this asset
-  const { data: existing, error: existingError } = await supabase
-    .from('assets')
-    .select('id, symbol, name, asset_type')
-    .eq('symbol', symbol.toUpperCase())
+
+  const { data: existing } = await supabase
+    .from("assets")
+    .select("id, symbol, name, asset_type")
+    .eq("symbol", symbol.toUpperCase())
     .single();
-  if (existingError) {
-    console.error('Error querying assets table:', existingError);
-  }
+
   if (existing) {
-    console.log('Asset already exists:', existing);
-    // Update with latest price data
     const quote = await getSymbolQuote(symbol);
     if (quote) {
       await supabase
-        .from('assets')
+        .from("assets")
         .update({
           current_price: quote.currentPrice,
           previous_close: quote.previousClose,
@@ -296,47 +436,41 @@ export async function upsertAssetWithQuote(symbol: string): Promise<{ id: string
           week_52_low: quote.week52Low,
           volume: quote.volume,
           market_cap: quote.marketCap,
+          nav: quote.nav,
+          nav_change: quote.navChange,
           last_price_update: new Date().toISOString(),
         })
-        .eq('id', existing.id);
+        .eq("id", existing.id);
     }
-    return {
-      id: existing.id,
-      symbol: existing.symbol,
-      name: existing.name,
-      type: existing.asset_type,
-    };
+
+    return { id: existing.id, symbol: existing.symbol, name: existing.name, type: existing.asset_type };
   }
-  // Fetch full quote data for new asset
+
   const quote = await getSymbolQuote(symbol);
-  console.log('Quote for symbol:', symbol, quote); // Debug log
   if (!quote) {
-    console.warn('No quote data for symbol:', symbol);
-    // Couldn't get quote data, create minimal entry
     const type = inferAssetType(symbol);
-    const { data: newAsset, error: insertError } = await supabase
-      .from('assets')
+    const keywords = generateAssetKeywords(symbol.toUpperCase(), symbol.toUpperCase(), type);
+
+    const { data: newAsset } = await supabase
+      .from("assets")
       .insert({
         symbol: symbol.toUpperCase(),
         name: symbol.toUpperCase(),
         asset_type: type,
-        keywords: [symbol.toUpperCase()],
+        keywords,
       })
-      .select('id, symbol, name, asset_type')
+      .select("id, symbol, name, asset_type")
       .single();
-    if (insertError) {
-      console.error('Error inserting minimal asset:', insertError);
-    }
-    return newAsset ? {
-      id: newAsset.id,
-      symbol: newAsset.symbol,
-      name: newAsset.name,
-      type: newAsset.asset_type,
-    } : null;
+
+    return newAsset
+      ? { id: newAsset.id, symbol: newAsset.symbol, name: newAsset.name, type: newAsset.asset_type }
+      : null;
   }
-  // Create new asset with full data
-  const { data: newAsset, error: fullInsertError } = await supabase
-    .from('assets')
+
+  const keywords = generateAssetKeywords(quote.symbol, quote.name, quote.type);
+
+  const { data: newAsset } = await supabase
+    .from("assets")
     .insert({
       symbol: quote.symbol.toUpperCase(),
       name: quote.name,
@@ -352,19 +486,16 @@ export async function upsertAssetWithQuote(symbol: string): Promise<{ id: string
       week_52_high: quote.week52High,
       week_52_low: quote.week52Low,
       volume: quote.volume,
-      market_cap: quote.marketCap ? Math.round(quote.marketCap) : undefined,
-      keywords: [quote.symbol.toUpperCase(), quote.name],
+      market_cap: quote.marketCap,
+      nav: quote.nav,
+      nav_change: quote.navChange,
+      keywords,
       last_price_update: new Date().toISOString(),
     })
-    .select('id, symbol, name, asset_type')
+    .select("id, symbol, name, asset_type")
     .single();
-  if (fullInsertError) {
-    console.error('Error inserting full asset:', fullInsertError);
-  }
-  return newAsset ? {
-    id: newAsset.id,
-    symbol: newAsset.symbol,
-    name: newAsset.name,
-    type: newAsset.asset_type,
-  } : null;
+
+  return newAsset
+    ? { id: newAsset.id, symbol: newAsset.symbol, name: newAsset.name, type: newAsset.asset_type }
+    : null;
 }

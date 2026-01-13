@@ -22,6 +22,7 @@ const addAssetSchema = z.object({
   shares_held: z.number().optional(),
   average_cost: z.number().optional(),
   portfolio_id: z.string().uuid().optional(),
+  portfolio_percentage: z.number().min(0).max(100), // REQUIRED: allocation percentage
 }).refine(data => data.asset_id || data.symbol, {
   message: 'Either asset_id or symbol must be provided',
 });
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { asset_id, symbol, importance_level, shares_held, average_cost, portfolio_id } = parsed.data;
+  const { asset_id, symbol, importance_level, shares_held, average_cost, portfolio_id, portfolio_percentage } = parsed.data;
 
   let finalAssetId = asset_id;
 
@@ -151,9 +152,10 @@ export async function POST(request: NextRequest) {
         shares_held,
         average_cost,
         portfolio_id: portfolio_id || null,
+        portfolio_percentage,
       },
       {
-        onConflict: 'user_id,asset_id',
+        onConflict: 'user_id,asset_id,portfolio_id',
       }
     )
     .select(`
@@ -177,6 +179,39 @@ export async function POST(request: NextRequest) {
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
+  }
+
+  // AUTO-SYNC: Trigger financial data sync and news ingestion for the new asset
+  const assetSymbol = (userAsset as any)?.assets?.symbol;
+  if (assetSymbol) {
+    console.log(`[AddAsset] Triggering background sync for ${assetSymbol}...`);
+    
+    // Get auth token to pass to sync endpoints
+    const authHeader = request.headers.get('authorization') || '';
+    
+    // Fire-and-forget: Sync financial data
+    fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/sync/all`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': authHeader,
+        'Content-Type': 'application/json'
+      },
+    }).then(res => {
+      if (res.ok) console.log(`[AddAsset] Financial sync triggered for ${assetSymbol}`);
+      else console.error(`[AddAsset] Financial sync failed for ${assetSymbol}`);
+    }).catch(err => console.error(`[AddAsset] Sync error:`, err));
+
+    // Fire-and-forget: Ingest news for this symbol
+    fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/ingest`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': authHeader,
+        'Content-Type': 'application/json'
+      },
+    }).then(res => {
+      if (res.ok) console.log(`[AddAsset] News ingestion triggered for ${assetSymbol}`);
+      else console.error(`[AddAsset] News ingestion failed for ${assetSymbol}`);
+    }).catch(err => console.error(`[AddAsset] Ingest error:`, err));
   }
 
   return NextResponse.json({ success: true, userAsset });

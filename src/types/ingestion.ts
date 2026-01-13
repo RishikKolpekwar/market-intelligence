@@ -106,6 +106,21 @@ export interface AssetWithNews {
   week52Low?: number;
   importanceLevel: 'low' | 'normal' | 'high' | 'critical';
   newsItems: RelevantNewsItem[];
+  // Portfolio metrics
+  portfolioPercentage?: number;
+  portfolioAllocations?: Array<{
+    portfolioId: string;
+    portfolioName: string;
+    percentage: number;
+  }>;
+  // Historical price changes
+  priceChangeMonth?: number;
+  priceChangePctMonth?: number;
+  priceChangeYear?: number;
+  priceChangePctYear?: number;
+  // Fundamental metrics
+  evEbitda?: number | null;
+  nextEarningsDate?: string | null;
 }
 
 /**
@@ -152,17 +167,40 @@ export interface GeneratedBriefing {
     name?: string;
     summary: string;
     newsCount: number;
+    newsLinks?: {
+      title: string;
+      url: string;
+      source: string;
+      publishedAt: string;
+    }[];
+    // Price data
     currentPrice?: number;
     priceChange?: number;
     priceChangePercent?: number;
     week52High?: number;
     week52Low?: number;
+    // Historical price changes
+    priceChangeMonth?: number;
+    priceChangePctMonth?: number;
+    priceChangeYear?: number;
+    priceChangePctYear?: number;
+    // Portfolio metrics
+    portfolioPercentage?: number;
+    portfolioAllocations?: Array<{
+      portfolioName: string;
+      percentage: number;
+    }>;
+    // Fundamental metrics
+    evEbitda?: number | null;
+    nextEarningsDate?: string | null;
   }[];
   notableHeadlines: {
     title: string;
     url: string;
     source: string;
-    reason: string;
+    why_it_matters?: string;
+    // Legacy fields for backwards compatibility
+    reason?: string;
     publishedAt?: string;
     snippet?: string;
   }[];

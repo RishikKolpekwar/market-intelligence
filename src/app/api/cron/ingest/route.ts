@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ingestNewsAPI } from '@/lib/ingestion/newsapi';
 import { ingestFinnhub } from '@/lib/ingestion/finnhub';
 import { ingestRSSFeeds } from '@/lib/ingestion/rss';
+import { ingestMacroNews } from '@/lib/ingestion/macro-news';
 import { processAllUnprocessedNews } from '@/lib/relevance/filter';
 import { createServerClient } from '@/lib/supabase/client';
 
@@ -80,7 +81,19 @@ export async function GET(request: NextRequest) {
       console.error('RSS error:', msg);
     }
 
-    // 4. Process relevance for new items
+    // 4. Ingest macro/market news (for Market Headlines section)
+    console.log('Starting Macro News ingestion...');
+    try {
+      const macroResult = await ingestMacroNews();
+      results.macroNews = macroResult;
+      console.log(`Macro News: ${macroResult.ingested} new items`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Macro news error';
+      errors.push(msg);
+      console.error('Macro news error:', msg);
+    }
+
+    // 5. Process relevance for new items
     console.log('Processing relevance...');
     try {
       const relevanceResult = await processAllUnprocessedNews();

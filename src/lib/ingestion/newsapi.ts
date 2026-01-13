@@ -152,9 +152,22 @@ export async function ingestNewsAPI(query?: string): Promise<IngestionResult> {
       searchedQueries.add(cleanName.toLowerCase());
 
       try {
+        // Search by company/fund name first
         const articles = await fetchNewsAPIEverything(cleanName, 20);
-        // Tag articles with the symbol
-        articles.forEach((a) => {
+        
+        // Also search by ticker symbol if it's 3-4 chars (likely a valid stock symbol)
+        let symbolArticles: NormalizedArticle[] = [];
+        if (asset.symbol.length >= 3 && asset.symbol.length <= 5) {
+          try {
+            symbolArticles = await fetchNewsAPIEverything(asset.symbol, 10);
+            await new Promise((resolve) => setTimeout(resolve, 150));
+          } catch (e) { /* ignore symbol search errors */ }
+        }
+        
+        const combinedArticles = [...articles, ...symbolArticles];
+        
+        // Tag articles with the symbol and entity
+        combinedArticles.forEach((a) => {
           if (!a.mentionedSymbols) a.mentionedSymbols = [];
           if (!a.mentionedSymbols.includes(asset.symbol)) {
             a.mentionedSymbols.push(asset.symbol);
@@ -167,13 +180,13 @@ export async function ingestNewsAPI(query?: string): Promise<IngestionResult> {
             a.mentionedEntities.push(asset.name);
           }
         });
-        companyArticles.push(...articles);
-        console.log(`NewsAPI: ${articles.length} articles for "${cleanName}"`);
+        companyArticles.push(...combinedArticles);
+        console.log(`NewsAPI: ${combinedArticles.length} articles for "${cleanName}" (${asset.symbol})`);
         // Respect rate limits (NewsAPI free tier is limited)
         await new Promise((resolve) => setTimeout(resolve, 200));
       } catch (err) {
         // NewsAPI free tier has limited requests, don't fail entire ingestion
-        console.warn(`NewsAPI search for "${companyName}" failed:`, err);
+        console.warn(`NewsAPI search for "${cleanName}" failed:`, err);
       }
     }
 
