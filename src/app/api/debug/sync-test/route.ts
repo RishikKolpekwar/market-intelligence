@@ -8,9 +8,9 @@ import { getQuote, getTimeSeries } from '@/lib/financial-data/twelve-data';
 import { getKeyMetrics, getEarningsCalendar, getRatiosTTM, getEvEbitda } from '@/lib/financial-data/fmp';
 import { 
   fetchValuationMetrics, 
-  fetchEarningsDate, 
-  fetchHistoricalChanges 
+  fetchEarningsDate
 } from '@/lib/market-data/price-service';
+import { getYahooMonthYearChanges } from '@/lib/market-data/symbol-lookup';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
     const [metrics, earnings, history] = await Promise.all([
       fetchValuationMetrics(symbol),
       fetchEarningsDate(symbol),
-      fetchHistoricalChanges(symbol, currentPrice),
+      getYahooMonthYearChanges(symbol, currentPrice),
     ]);
     
     results.priceService = {

@@ -6,6 +6,7 @@ import {
   generateEmptyBriefing,
 } from "@/lib/llm/briefing-generator";
 import { BriefingInput, AssetWithNews } from "@/types/ingestion";
+import { Database } from "@/types/database";
 
 // Force Node.js runtime (not Edge)
 export const runtime = "nodejs";
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
       (cronSecretHeader === process.env.CRON_SECRET ||
         bearerToken === process.env.CRON_SECRET));
 
-  let supabase: ReturnType<typeof createClient>;
+  let supabase: ReturnType<typeof createClient<Database>>;
   let user: { id: string; email?: string } | null = null;
 
   // ---- Parse body ONCE (your old version parsed only for cron) ----
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
     }
 
     // Service role client (bypasses RLS)
-    supabase = createClient(
+    supabase = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
     }
 
     // Supabase client authenticated as the user (RLS works)
-    supabase = createClient(
+    supabase = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -239,6 +240,17 @@ export async function POST(request: Request) {
     }
 
     // ✅ Step 1: Get ALL tracked assets (regardless of news)
+    type TrackedAssetQueryResult = {
+      asset_id: string;
+      portfolio_percentage: number | null;
+      assets: {
+        id: string;
+        symbol: string;
+        name: string;
+        asset_type: string | null;
+      };
+    };
+
     let trackedQuery = supabase
       .from("user_assets")
       .select(
@@ -254,7 +266,10 @@ export async function POST(request: Request) {
       trackedQuery = trackedQuery.eq("portfolio_id", portfolioId);
     }
 
-    const { data: trackedAssets, error: trackedError } = await trackedQuery;
+    const { data: trackedAssets, error: trackedError } = await trackedQuery as { 
+      data: TrackedAssetQueryResult[] | null; 
+      error: any 
+    };
     if (trackedError) {
       console.error("Error fetching tracked assets:", trackedError);
     }
@@ -277,13 +292,17 @@ export async function POST(request: Request) {
 
     // First, add ALL tracked assets (with empty news array)
     for (const ua of trackedAssets || []) {
-      const asset = ua.assets as any;
+      const asset = ua.assets;
+      // Map mutual_fund to etf for AssetWithNews type compatibility
+      const assetType = asset.asset_type === "mutual_fund" 
+        ? "etf" 
+        : (asset.asset_type as "stock" | "etf" | "crypto" | "index") || "stock";
       if (!assetsMap.has(asset.id)) {
         assetsMap.set(asset.id, {
           assetId: asset.id,
           symbol: asset.symbol,
           name: asset.name,
-          assetType: asset.asset_type || "stock",
+          assetType,
           importanceLevel: "normal",
           currentPrice: undefined,
           priceChange24h: undefined,
@@ -359,6 +378,21 @@ export async function POST(request: Request) {
 
     // Enrich assets with portfolio metrics and price data
     for (const asset of assets) {
+      type AssetDataResult = {
+        current_price: number | null;
+        previous_close: number | null;
+        price_change_24h: number | null;
+        price_change_pct_24h: number | null;
+        week_52_high: number | null;
+        week_52_low: number | null;
+        month_change: number | null;
+        month_change_pct: number | null;
+        year_change: number | null;
+        year_change_pct: number | null;
+        ev_ebitda: number | null;
+        next_earnings_date: string | null;
+      };
+
       const { data: assetData } = await supabase
         .from("assets")
         .select(
@@ -378,19 +412,20 @@ export async function POST(request: Request) {
         `
         )
         .eq("id", asset.assetId)
-        .single();
+        .single<AssetDataResult>();
 
       if (assetData) {
-        asset.currentPrice = assetData.current_price;
-        asset.priceChange24h = assetData.price_change_24h;
-        asset.priceChangePct24h = assetData.price_change_pct_24h;
-        asset.week52High = assetData.week_52_high;
-        asset.week52Low = assetData.week_52_low;
+        // Convert null to undefined for AssetWithNews type compatibility
+        asset.currentPrice = assetData.current_price ?? undefined;
+        asset.priceChange24h = assetData.price_change_24h ?? undefined;
+        asset.priceChangePct24h = assetData.price_change_pct_24h ?? undefined;
+        asset.week52High = assetData.week_52_high ?? undefined;
+        asset.week52Low = assetData.week_52_low ?? undefined;
 
-        asset.priceChangeMonth = assetData.month_change;
-        asset.priceChangePctMonth = assetData.month_change_pct;
-        asset.priceChangeYear = assetData.year_change;
-        asset.priceChangePctYear = assetData.year_change_pct;
+        asset.priceChangeMonth = assetData.month_change ?? undefined;
+        asset.priceChangePctMonth = assetData.month_change_pct ?? undefined;
+        asset.priceChangeYear = assetData.year_change ?? undefined;
+        asset.priceChangePctYear = assetData.year_change_pct ?? undefined;
         asset.evEbitda = assetData.ev_ebitda;
         asset.nextEarningsDate = assetData.next_earnings_date;
       }
