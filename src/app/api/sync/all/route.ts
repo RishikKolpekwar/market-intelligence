@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { fetchEarningsDate, fetchHistoricalChanges } from "@/lib/market-data/price-service";
+import { fetchEarningsDate } from "@/lib/market-data/price-service";
 import {
   getYahooQuote,
   getYahooKeyStats,
@@ -269,22 +269,6 @@ export async function POST(request: Request) {
             console.warn(`[Sync] ${symbol}: Yahoo history failed, trying Twelve Data...`);
           }
           
-          // 2️⃣ FALLBACK: Twelve Data (via price-service)
-          if (!historyFetched) {
-            try {
-              const changes = await fetchHistoricalChanges(symbol, currentPrice);
-              if (changes && changes.monthChange !== null) {
-                updates.month_change = changes.monthChange;
-                updates.month_change_pct = changes.monthChangePct;
-                updates.year_change = changes.yearChange;
-                updates.year_change_pct = changes.yearChangePct;
-                historyFetched = true;
-                console.log(`[Sync] ${symbol}: ✅ Twelve Data history: 1M=${changes.monthChangePct?.toFixed(2)}%, 1Y=${changes.yearChangePct?.toFixed(2)}%`);
-              }
-            } catch (err) {
-              console.error(`[Sync] ${symbol}: ❌ All history APIs failed`);
-            }
-          }
           
           if (historyFetched) {
             updates.history_updated_at = now.toISOString();
