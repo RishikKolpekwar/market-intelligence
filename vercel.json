@@ -1,14 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/cron/ingest",
-      "schedule": "0 6,8,10,12,14,16,18,20,22 * * *"
-    },
-    {
-      "path": "/api/cron/update-prices",
-      "schedule": "0 14,15,16,17,18,19,20,21 * * 1-5"
-    },
-    {
       "path": "/api/cron/daily-briefing-email",
       "schedule": "0 22 * * *"
     }
