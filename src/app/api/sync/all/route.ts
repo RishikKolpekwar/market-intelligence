@@ -61,23 +61,49 @@ function is52WeekDataSuspicious(asset: any): boolean {
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization") || "";
   const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7) : "";
+  
+  // Check for cron secret (for internal server-to-server calls)
+  const cronSecret = request.headers.get("x-cron-secret") || "";
+  const isCronJob = !!process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET;
 
-  if (!token) {
-    return NextResponse.json({ success: false, error: "Missing token" }, { status: 401 });
+  // Parse body to get userId for cron jobs
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
+  let userId: string;
+  let supabase: ReturnType<typeof createClient>;
 
-  const { data: userRes, error: userErr } = await supabase.auth.getUser(token);
-  if (userErr || !userRes?.user) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  if (isCronJob) {
+    // Cron job - use service role and get userId from body
+    userId = body.userId;
+    if (!userId) {
+      return NextResponse.json({ success: false, error: "Missing userId for cron job" }, { status: 400 });
+    }
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  } else {
+    // Regular user request - require Authorization token
+    if (!token) {
+      return NextResponse.json({ success: false, error: "Missing token" }, { status: 401 });
+    }
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { global: { headers: { Authorization: `Bearer ${token}` } } }
+    );
+    const { data: userRes, error: userErr } = await supabase.auth.getUser(token);
+    if (userErr || !userRes?.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    userId = userRes.user.id;
   }
 
-  const user = userRes.user;
   const { searchParams } = new URL(request.url);
   const portfolioId = searchParams.get("portfolio_id");
   const forceRefresh = searchParams.get("force") === "true";
@@ -87,7 +113,7 @@ export async function POST(request: Request) {
     let query = supabase
       .from('user_assets')
       .select('assets!inner(*)')
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     if (portfolioId) {
       query = query.eq('portfolio_id', portfolioId);
@@ -333,8 +359,8 @@ export async function POST(request: Request) {
       // Save updates
       if (Object.keys(updates).length > 0) {
         console.log(`[Sync] ${symbol}: Saving ${Object.keys(updates).length} fields...`);
-        const { data, error } = await supabase
-          .from("assets")
+        const { data, error } = await (supabase
+          .from("assets") as any)
           .update(updates)
           .eq("id", asset.id)
           .select("id");

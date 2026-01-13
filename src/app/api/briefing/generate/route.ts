@@ -144,6 +144,7 @@ export async function POST(request: Request) {
       const syncRes = await fetch(syncUrl, {
         method: "POST",
         headers: syncHeaders,
+        body: isCronJob ? JSON.stringify({ userId: user.id }) : undefined,
       });
 
       if (syncRes.ok) {

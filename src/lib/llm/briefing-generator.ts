@@ -371,12 +371,12 @@ export async function generateDailyBriefing(
     } catch (repairError) {
       console.error("[Briefing] Repair attempt also failed:", repairError);
       // Fall back to basic briefing
-      return {
+    return {
         ...generateBasicBriefing(filteredInput, newsWindowDays, macroNews),
         llmModel: "fallback",
-        tokensUsed: 0,
-        generationTimeMs: Date.now() - startTime,
-      };
+      tokensUsed: 0,
+      generationTimeMs: Date.now() - startTime,
+    };
     }
   }
 }
@@ -569,22 +569,22 @@ INSTRUCTIONS:
     }
 
     return {
-      assetId: asset.assetId,
-      symbol: asset.symbol,
-      name: asset.name,
+    assetId: asset.assetId,
+    symbol: asset.symbol,
+    name: asset.name,
       summary: summary,
-      newsCount: asset.newsItems.length,
+    newsCount: asset.newsItems.length,
       newsLinks: asset.newsItems.slice(0, 5).map((n: any) => ({
         title: n.title,
         url: n.url,
         source: n.sourceName,
         publishedAt: new Date(n.publishedAt).toISOString(),
       })),
-      currentPrice: asset.currentPrice,
-      priceChange: asset.priceChange24h,
-      priceChangePercent: asset.priceChangePct24h,
-      week52High: asset.week52High,
-      week52Low: asset.week52Low,
+    currentPrice: asset.currentPrice,
+    priceChange: asset.priceChange24h,
+    priceChangePercent: asset.priceChangePct24h,
+    week52High: asset.week52High,
+    week52Low: asset.week52Low,
       priceChangeMonth: asset.priceChangeMonth,
       priceChangePctMonth: asset.priceChangePctMonth,
       priceChangeYear: asset.priceChangeYear,
@@ -652,7 +652,7 @@ function buildFallbackAssetSummary(asset: any): string {
   let broaderSection = "\n\nBROADER COVERAGE: ";
   if (contextual.length === 0) {
     broaderSection += "Limited additional coverage in this window.";
-  } else {
+    } else {
     broaderSection += `Broader market coverage includes ${contextual.length} additional article${contextual.length > 1 ? 's' : ''} from various sources. `;
 
     const contextTitles = contextual.slice(0, 2).map((x: any) => x.title);
@@ -688,9 +688,9 @@ export function generateBasicBriefing(
   );
 
   const assetSummaries = sortedAssets.map((asset: any) => ({
-    assetId: asset.assetId,
-    symbol: asset.symbol,
-    name: asset.name,
+      assetId: asset.assetId,
+      symbol: asset.symbol,
+      name: asset.name,
     summary: buildFallbackAssetSummary(asset),
     newsCount: (asset.newsItems || []).length,
     newsLinks: (asset.newsItems || []).slice(0, 5).map((n: any) => ({
@@ -699,11 +699,11 @@ export function generateBasicBriefing(
       source: n.sourceName,
       publishedAt: new Date(n.publishedAt).toISOString(),
     })),
-    currentPrice: asset.currentPrice,
-    priceChange: asset.priceChange24h,
-    priceChangePercent: asset.priceChangePct24h,
-    week52High: asset.week52High,
-    week52Low: asset.week52Low,
+      currentPrice: asset.currentPrice,
+      priceChange: asset.priceChange24h,
+      priceChangePercent: asset.priceChangePct24h,
+      week52High: asset.week52High,
+      week52Low: asset.week52Low,
     priceChangeMonth: asset.priceChangeMonth,
     priceChangePctMonth: asset.priceChangePctMonth,
     priceChangeYear: asset.priceChangeYear,
@@ -720,9 +720,9 @@ export function generateBasicBriefing(
   const notableHeadlines =
     macroNews.length > 0
       ? macroNews.slice(0, 5).map((news) => ({
-          title: news.title,
-          url: news.url,
-          source: news.sourceName,
+        title: news.title,
+        url: news.url,
+        source: news.sourceName,
           why_it_matters: news.whyItMatters || news.category || "Market story",
           publishedAt: new Date(news.publishedAt).toISOString(),
           snippet: clamp(news.summary, 160),

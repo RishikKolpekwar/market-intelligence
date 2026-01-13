@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/client';
-import { z } from 'zod';
+import { upsertAssetWithQuote } from '@/lib/market-data/symbol-lookup';
 
 // Helper to get Supabase client with access token from header
 function getSupabaseWithAuth(request: NextRequest) {
@@ -11,36 +11,14 @@ function getSupabaseWithAuth(request: NextRequest) {
     accessToken = authHeader.replace('Bearer ', '');
   }
   
-  return createServerClient({ });
+  return createServerClient({ accessToken });
 }
 
-// Schema for updating user asset
-const updateAssetSchema = z.object({
-  portfolio_percentage: z.number().min(0).max(100).optional(),
-  importance_level: z.enum(['low', 'normal', 'high', 'critical']).optional(),
-  shares_held: z.number().optional().nullable(),
-  average_cost: z.number().optional().nullable(),
-});
-
-// Type matching the user_assets table update fields
-type UserAssetUpdate = {
-  portfolio_percentage?: number;
-  importance_level?: 'low' | 'normal' | 'high' | 'critical';
-  shares_held?: number | null;
-  average_cost?: number | null;
-  notes?: string | null;
-  portfolio_id?: string | null;
-  updated_at?: string;
-};
-
 /**
- * DELETE /api/user/assets/[id]
- * Remove a specific user_asset entry (delete from a specific fund)
+ * POST /api/user/assets
+ * Add a new asset to user's portfolio
  */
-export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-): Promise<NextResponse> {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = getSupabaseWithAuth(request);
 
   const {
@@ -49,50 +27,6 @@ export async function DELETE(
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { id: userAssetId } = await context.params;
-
-  if (!userAssetId) {
-    return NextResponse.json({ error: 'user_asset id is required' }, { status: 400 });
-  }
-
-  // Delete the specific user_asset entry
-  const { error } = await supabase
-    .from('user_assets')
-    .delete()
-    .eq('id', userAssetId)
-    .eq('user_id', user.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
-}
-
-/**
- * PATCH /api/user/assets/[id]
- * Update a specific user_asset entry (e.g., change allocation percentage)
- */
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-): Promise<NextResponse> {
-  const supabase = getSupabaseWithAuth(request);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { id: userAssetId } = await context.params;
-
-  if (!userAssetId) {
-    return NextResponse.json({ error: 'user_asset id is required' }, { status: 400 });
   }
 
   // Parse and validate request body
@@ -103,58 +37,73 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const parsed = updateAssetSchema.safeParse(body);
+  const { symbol, portfolio_id, portfolio_percentage, importance_level } = body;
 
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'Invalid request body', details: parsed.error.format() },
-      { status: 400 }
-    );
+  if (!symbol || typeof symbol !== 'string') {
+    return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
   }
 
-  // Build update object with only provided fields
-  const updateData: UserAssetUpdate = {};
-
-  if (parsed.data.portfolio_percentage !== undefined) {
-    updateData.portfolio_percentage = parsed.data.portfolio_percentage;
-  }
-  if (parsed.data.importance_level !== undefined) {
-    updateData.importance_level = parsed.data.importance_level;
-  }
-  if (parsed.data.shares_held !== undefined) {
-    updateData.shares_held = parsed.data.shares_held;
-  }
-  if (parsed.data.average_cost !== undefined) {
-    updateData.average_cost = parsed.data.average_cost;
+  if (portfolio_percentage !== undefined && (typeof portfolio_percentage !== 'number' || portfolio_percentage < 0 || portfolio_percentage > 100)) {
+    return NextResponse.json({ error: 'Portfolio percentage must be between 0 and 100' }, { status: 400 });
   }
 
-  if (Object.keys(updateData).length === 0) {
-    return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-  }
+  try {
+    // Upsert the asset (create or update in assets table)
+    const asset = await upsertAssetWithQuote(symbol.toUpperCase());
+    
+    if (!asset) {
+      return NextResponse.json({ error: 'Failed to create or find asset' }, { status: 500 });
+    }
 
-  // Update the user_asset entry
-  const { data: updatedAsset, error } = await supabase
-    .from('user_assets')
-    .update(updateData as never)
-    .eq('id', userAssetId)
-    .eq('user_id', user.id)
-    .select(`
-      id,
-      portfolio_percentage,
-      importance_level,
-      shares_held,
-      average_cost,
-      assets!inner (
+    // Check if user already has this asset in this portfolio
+    const existingQuery = supabase
+      .from('user_assets')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('asset_id', asset.id);
+    
+    if (portfolio_id) {
+      existingQuery.eq('portfolio_id', portfolio_id);
+    } else {
+      existingQuery.is('portfolio_id', null);
+    }
+
+    const { data: existing } = await existingQuery.single();
+
+    if (existing) {
+      return NextResponse.json({ error: 'Asset already exists in this portfolio' }, { status: 400 });
+    }
+
+    // Create the user_asset entry
+    const { data: userAsset, error: insertError } = await (supabase
+      .from('user_assets') as any)
+      .insert({
+        user_id: user.id,
+        asset_id: asset.id,
+        portfolio_id: portfolio_id || null,
+        portfolio_percentage: portfolio_percentage !== undefined ? portfolio_percentage : null,
+        importance_level: importance_level || 'normal',
+      })
+      .select(`
         id,
-        symbol,
-        name
-      )
-    `)
-    .single();
+        portfolio_percentage,
+        importance_level,
+        assets!inner (
+          id,
+          symbol,
+          name
+        )
+      `)
+      .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (insertError) {
+      console.error('Error creating user_asset:', insertError);
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, userAsset });
+  } catch (error: any) {
+    console.error('Unexpected error adding asset:', error);
+    return NextResponse.json({ error: error.message || 'An unexpected error occurred' }, { status: 500 });
   }
-
-  return NextResponse.json({ success: true, userAsset: updatedAsset });
 }
