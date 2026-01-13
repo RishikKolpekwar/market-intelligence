@@ -240,7 +240,7 @@ const COMPANY_NAMES: Record<string, string> = {
   SHOP: 'Shopify',
   ROKU: 'Roku',
   SPOT: 'Spotify',
-  SQ: 'Block Square',
+  SQ2: 'Block Square',
   RBLX: 'Roblox',
   RIVN: 'Rivian',
   LCID: 'Lucid Motors',
@@ -383,8 +383,8 @@ export async function ingestRSSFeeds(): Promise<IngestionResult[]> {
 
     try {
       // Get or create source
-      const { data: existingSource } = await supabase
-        .from('news_sources')
+      const { data: existingSource } = await (supabase
+        .from('news_sources') as any)
         .select('id')
         .eq('name', feedConfig.name)
         .single();
@@ -392,8 +392,8 @@ export async function ingestRSSFeeds(): Promise<IngestionResult[]> {
       let sourceId = existingSource?.id;
 
       if (!sourceId) {
-        const { data: newSource } = await supabase
-          .from('news_sources')
+        const { data: newSource } = await (supabase
+          .from('news_sources') as any)
           .insert({
             name: feedConfig.name,
             source_type: 'rss',
@@ -442,7 +442,7 @@ export async function ingestRSSFeeds(): Promise<IngestionResult[]> {
           continue;
         }
 
-        const { error } = await supabase.from('news_items').insert({
+        const { error } = await (supabase.from('news_items') as any).insert({
           source_id: sourceId,
           source_name: article.sourceName,
           external_id: article.externalId,
@@ -472,8 +472,8 @@ export async function ingestRSSFeeds(): Promise<IngestionResult[]> {
 
       // Update source last fetch time
       if (sourceId) {
-        await supabase
-          .from('news_sources')
+        await (supabase
+          .from('news_sources') as any)
           .update({ last_fetch_at: new Date().toISOString() })
           .eq('id', sourceId);
       }
@@ -548,7 +548,7 @@ export async function ingestRSSFeeds(): Promise<IngestionResult[]> {
                 continue;
               }
 
-              const { error } = await supabase.from('news_items').insert({
+              const { error } = await (supabase.from('news_items') as any).insert({
                 source_name: article.sourceName,
                 external_id: article.externalId,
                 title: article.title,

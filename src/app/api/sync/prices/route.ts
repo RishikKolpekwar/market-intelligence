@@ -93,7 +93,7 @@ export async function POST(request: Request) {
           }));
 
           // Upsert price history (on conflict update)
-          await supabase.from('asset_price_history').upsert(priceHistory, {
+          await (supabase.from('asset_price_history') as any).upsert(priceHistory, {
             onConflict: 'asset_id,price_date',
             ignoreDuplicates: false,
           });

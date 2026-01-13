@@ -47,8 +47,8 @@ export async function ingestAgenticNews(): Promise<IngestionResult> {
 
   try {
     // Get tracked assets
-    const { data: trackedAssets } = await supabase
-      .from('user_assets')
+    const { data: trackedAssets } = await (supabase
+      .from('user_assets') as any)
       .select('asset_id, assets!inner(symbol, name)')
       .limit(10); 
 
@@ -80,7 +80,7 @@ export async function ingestAgenticNews(): Promise<IngestionResult> {
         const hash = generateContentHash(dev.headline, dev.url);
 
         // Save as a news item
-        const { data: newsItem, error: newsError } = await supabase.from('news_items').upsert({
+        const { data: newsItem, error: newsError } = await (supabase.from('news_items') as any).upsert({
           source_name: 'AI Analyst',
           title: dev.headline,
           summary: dev.context,
@@ -92,9 +92,9 @@ export async function ingestAgenticNews(): Promise<IngestionResult> {
 
         if (newsItem) {
           // Link it with the AI context in the relevance table
-          await supabase.from('news_asset_relevance').upsert({
-            news_item_id: newsItem.id,
-            asset_id: ua.asset_id,
+          await (supabase.from('news_asset_relevance') as any).upsert({
+            news_item_id: (newsItem as any).id,
+            asset_id: (ua as any).asset_id,
             match_type: 'llm_inferred',
             relevance_score: 0.99, // Highly relevant since AI picked it
             relevance_summary: dev.context,

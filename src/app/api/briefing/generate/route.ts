@@ -500,23 +500,28 @@ export async function POST(request: Request) {
 
     const briefingDateIso = today.toISOString().split("T")[0];
 
-    const { error: saveError } = await supabase.from("daily_briefings").upsert(
-      {
-        user_id: user!.id,
-        briefing_date: briefingDateIso,
-        market_overview: briefing.marketOverview,
-        asset_summaries: briefing.assetSummaries,
-        notable_headlines: briefing.notableHeadlines,
-        full_briefing_html: briefing.fullBriefingHtml,
-        full_briefing_text: briefing.fullBriefingText,
-        total_news_items: totalNewsCount,
-        assets_covered: assets.length,
-        llm_model: "llmModel" in briefing ? briefing.llmModel : undefined,
-        llm_tokens_used: "tokensUsed" in briefing ? briefing.tokensUsed : undefined,
-        generation_time_ms: Date.now() - startTime,
-      },
-      { onConflict: "user_id,briefing_date" }
-    );
+    // Use explicit Insert type to fix TypeScript inference
+    type BriefingInsert = Database['public']['Tables']['daily_briefings']['Insert'];
+
+    const briefingInsert: BriefingInsert = {
+      user_id: user!.id,
+      briefing_date: briefingDateIso,
+      market_overview: briefing.marketOverview,
+      asset_summaries: briefing.assetSummaries as any, // Json type
+      notable_headlines: briefing.notableHeadlines as any, // Json type
+      full_briefing_html: briefing.fullBriefingHtml,
+      full_briefing_text: briefing.fullBriefingText,
+      total_news_items: totalNewsCount,
+      assets_covered: assets.length,
+      llm_model: ("llmModel" in briefing && typeof briefing.llmModel === "string") ? briefing.llmModel : null,
+      llm_tokens_used: ("tokensUsed" in briefing && typeof briefing.tokensUsed === "number") ? briefing.tokensUsed : null,
+      generation_time_ms: Date.now() - startTime,
+    };
+
+    // Type assertion needed due to TypeScript inference limitations with Supabase
+    const { error: saveError } = await (supabase
+      .from("daily_briefings") as any)
+      .upsert(briefingInsert, { onConflict: "user_id,briefing_date" });
 
     if (saveError) console.error("Error saving briefing:", saveError);
 

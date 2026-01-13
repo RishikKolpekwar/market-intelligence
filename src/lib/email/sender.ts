@@ -49,22 +49,22 @@ export async function sendBriefingEmail(params: SendBriefingEmailParams): Promis
   const dateKey = params.briefingDate.toISOString().split('T')[0];
 
   // Check for idempotency - have we already sent this email?
-  const { data: existingLog } = await supabase
-    .from('email_send_log')
+  const { data: existingLog } = await (supabase
+    .from('email_send_log') as any)
     .select('id, status')
     .eq('user_id', params.userId)
     .eq('briefing_date', dateKey)
     .eq('email_type', 'daily_briefing')
     .single();
 
-  if (existingLog?.status === 'sent') {
+  if ((existingLog as any)?.status === 'sent') {
     console.log(`Email already sent for user ${params.userId} on ${dateKey}`);
     return { success: true, mailersendId: existingLog.id };
   }
 
   // Create or update the send log entry (pending)
-  const { data: logEntry, error: logError } = await supabase
-    .from('email_send_log')
+  const { data: logEntry, error: logError } = await (supabase
+    .from('email_send_log') as any)
     .upsert(
       {
         user_id: params.userId,
@@ -114,14 +114,14 @@ export async function sendBriefingEmail(params: SendBriefingEmailParams): Promis
     const response = await mailersend.email.send(emailParams);
 
     // Update log with success
-    await supabase
-      .from('email_send_log')
+    await (supabase
+      .from('email_send_log') as any)
       .update({
         status: 'sent',
         sent_at: new Date().toISOString(),
-        mailersend_id: response.headers?.['x-message-id'] || logEntry?.id,
+        mailersend_id: response.headers?.['x-message-id'] || (logEntry as any)?.id,
       })
-      .eq('id', logEntry?.id);
+      .eq('id', (logEntry as any)?.id);
 
     return {
       success: true,
@@ -131,14 +131,14 @@ export async function sendBriefingEmail(params: SendBriefingEmailParams): Promis
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Update log with failure
-    await supabase
-      .from('email_send_log')
+    await (supabase
+      .from('email_send_log') as any)
       .update({
         status: 'failed',
         error_message: errorMessage,
         retry_count: (existingLog as any)?.retry_count || 0 + 1,
       })
-      .eq('id', logEntry?.id);
+      .eq('id', (logEntry as any)?.id);
 
     console.error('Error sending email:', error);
     return { success: false, error: errorMessage };
@@ -211,5 +211,5 @@ export async function getUsersDueForEmail(
 
   const sentUserIds = new Set((sentToday || []).map((s: { user_id: string }) => s.user_id));
 
-  return users.filter((u) => !sentUserIds.has(u.id));
+  return users.filter((u: any) => !sentUserIds.has(u.id));
 }

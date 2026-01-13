@@ -107,8 +107,8 @@ export default function BriefingDetailPage() {
 
       // Sort asset_summaries by portfolioPercentage descending
       const sortedBriefing = {
-        ...briefingData,
-        asset_summaries: [...(briefingData.asset_summaries || [])].sort(
+        ...(briefingData as any),
+        asset_summaries: [...((briefingData as any)?.asset_summaries || [])].sort(
           (a: AssetSummary, b: AssetSummary) =>
             (b.portfolioPercentage || 0) - (a.portfolioPercentage || 0)
         ),

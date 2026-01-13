@@ -53,16 +53,16 @@ export async function ingestTiingo(): Promise<IngestionResult> {
 
   try {
     // Get source ID
-    const { data: source } = await supabase
-      .from('news_sources')
+    const { data: source } = await (supabase
+      .from('news_sources') as any)
       .select('id')
       .eq('name', 'Tiingo')
       .single();
 
     let sourceId = source?.id;
     if (!sourceId) {
-      const { data: newSource } = await supabase
-        .from('news_sources')
+      const { data: newSource } = await (supabase
+        .from('news_sources') as any)
         .insert({
           name: 'Tiingo',
           source_type: 'api',
@@ -94,12 +94,12 @@ export async function ingestTiingo(): Promise<IngestionResult> {
 
     // Get existing hashes to check for duplicates
     const hashes = articles.map((a) => generateContentHash(a.title, a.url));
-    const { data: existingItems } = await supabase
-      .from('news_items')
+    const { data: existingItems } = await (supabase
+      .from('news_items') as any)
       .select('content_hash')
       .in('content_hash', hashes.slice(0, 500));
 
-    const existingHashes = new Set(existingItems?.map((i) => i.content_hash) || []);
+    const existingHashes = new Set(existingItems?.map((i: any) => i.content_hash) || []);
 
     // Insert new articles
     for (const article of articles) {
@@ -110,7 +110,7 @@ export async function ingestTiingo(): Promise<IngestionResult> {
         continue;
       }
 
-      const { error } = await supabase.from('news_items').insert({
+      const { error } = await (supabase.from('news_items') as any).insert({
         source_id: sourceId,
         source_name: 'Tiingo',
         external_id: article.externalId,
@@ -139,8 +139,8 @@ export async function ingestTiingo(): Promise<IngestionResult> {
 
     // Update source last fetch time
     if (sourceId) {
-      await supabase
-        .from('news_sources')
+      await (supabase
+        .from('news_sources') as any)
         .update({ last_fetch_at: new Date().toISOString() })
         .eq('id', sourceId);
     }

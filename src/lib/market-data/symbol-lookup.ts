@@ -344,8 +344,8 @@ export async function searchSymbols(query: string): Promise<SymbolLookupResult[]
   if (!FINNHUB_API_KEY) return searchSymbolsFallback(query);
 
   const supabase = createServerClient();
-  const { data: cached } = await supabase
-    .from("symbol_lookup_cache")
+  const { data: cached } = await (supabase
+    .from("symbol_lookup_cache") as any)
     .select("results")
     .eq("query", query.toLowerCase())
     .eq("provider", "finnhub")
@@ -372,7 +372,7 @@ export async function searchSymbols(query: string): Promise<SymbolLookupResult[]
         confidence: 0.8,
       }));
 
-    await supabase.from("symbol_lookup_cache").upsert(
+    await (supabase.from("symbol_lookup_cache") as any).upsert(
       {
         query: query.toLowerCase(),
         provider: "finnhub",
@@ -414,8 +414,8 @@ export async function upsertAssetWithQuote(
 ): Promise<{ id: string; symbol: string; name: string; type: string } | null> {
   const supabase = createServerClient();
 
-  const { data: existing } = await supabase
-    .from("assets")
+  const { data: existing } = await (supabase
+    .from("assets") as any)
     .select("id, symbol, name, asset_type")
     .eq("symbol", symbol.toUpperCase())
     .single();
@@ -423,8 +423,8 @@ export async function upsertAssetWithQuote(
   if (existing) {
     const quote = await getSymbolQuote(symbol);
     if (quote) {
-      await supabase
-        .from("assets")
+      await (supabase
+        .from("assets") as any)
         .update({
           current_price: quote.currentPrice,
           previous_close: quote.previousClose,
@@ -451,8 +451,8 @@ export async function upsertAssetWithQuote(
     const type = inferAssetType(symbol);
     const keywords = generateAssetKeywords(symbol.toUpperCase(), symbol.toUpperCase(), type);
 
-    const { data: newAsset } = await supabase
-      .from("assets")
+    const { data: newAsset } = await (supabase
+      .from("assets") as any)
       .insert({
         symbol: symbol.toUpperCase(),
         name: symbol.toUpperCase(),
@@ -469,8 +469,8 @@ export async function upsertAssetWithQuote(
 
   const keywords = generateAssetKeywords(quote.symbol, quote.name, quote.type);
 
-  const { data: newAsset } = await supabase
-    .from("assets")
+  const { data: newAsset } = await (supabase
+    .from("assets") as any)
     .insert({
       symbol: quote.symbol.toUpperCase(),
       name: quote.name,

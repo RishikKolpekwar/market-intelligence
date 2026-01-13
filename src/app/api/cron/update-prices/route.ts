@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const result = await updateAllAssetPrices();
 
     // Log the result
-    await supabase.from('ingestion_log').insert({
+    await (supabase.from('ingestion_log') as any).insert({
       source_name: 'price_update',
       status: result.failed === 0 ? 'success' : 'partial',
       items_fetched: result.updated + result.failed,
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    await supabase.from('ingestion_log').insert({
+    await (supabase.from('ingestion_log') as any).insert({
       source_name: 'price_update',
       status: 'failed',
       items_fetched: 0,

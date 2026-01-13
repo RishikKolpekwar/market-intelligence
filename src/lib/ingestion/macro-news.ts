@@ -285,7 +285,7 @@ export async function ingestMacroNews(): Promise<{ ingested: number; errors: num
   // Insert top 20 items
   for (const item of uniqueNews.slice(0, 20)) {
     try {
-      const { error } = await supabase.from('macro_news').upsert({
+      const { error } = await (supabase.from('macro_news') as any).upsert({
         title: item.title,
         summary: item.summary,
         url: item.url,
@@ -324,7 +324,7 @@ export async function getRecentMacroNews(
   cutoff.setHours(cutoff.getHours() - hoursBack);
   
   // Try macro_news table first
-  const { data: macroData, error: macroError } = await supabase
+  const { data: macroData, error: macroError } = await (supabase as any)
     .from('macro_news')
     .select('*')
     .eq('is_active', true)
@@ -335,7 +335,7 @@ export async function getRecentMacroNews(
   
   if (!macroError && macroData && macroData.length > 0) {
     console.log(`[MacroNews] Found ${macroData.length} items from macro_news table`);
-    return macroData.map(item => ({
+    return macroData.map((item: any) => ({
       title: item.title,
       summary: item.summary,
       url: item.url,
@@ -364,7 +364,7 @@ export async function getRecentMacroNews(
   
   // Filter and score for macro relevance
   const scoredNews = newsData
-    .map(item => {
+    .map((item: any) => {
       const relevanceScore = calculateMacroRelevance(item.title, item.summary || '');
       return {
         title: item.title,

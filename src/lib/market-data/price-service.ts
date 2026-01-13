@@ -61,8 +61,8 @@ export async function updateAllAssetPrices(): Promise<{
 
     try {
       // Update current asset fields
-      await supabase
-        .from("assets")
+      await (supabase
+        .from("assets") as any)
         .update({
           current_price: quote.currentPrice,
           previous_close: quote.previousClose,
@@ -84,8 +84,8 @@ export async function updateAllAssetPrices(): Promise<{
       const hist = await getYahooMonthYearChanges(asset.symbol, quote.currentPrice);
 
       // Store daily snapshot
-      await supabase
-        .from("asset_price_history")
+      await (supabase
+        .from("asset_price_history") as any)
         .upsert(
           {
             asset_id: asset.id,
@@ -144,8 +144,8 @@ export async function updateUserAssetPrices(userId: string): Promise<void> {
     const quote = quotes.get(asset.symbol);
     if (!quote) continue;
 
-    await supabase
-      .from("assets")
+    await (supabase
+      .from("assets") as any)
       .update({
         current_price: quote.currentPrice,
         previous_close: quote.previousClose,

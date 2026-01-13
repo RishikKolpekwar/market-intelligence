@@ -97,11 +97,11 @@ export async function selectFinalHeadlines(
     let parsed: any;
     try {
       // Remove any markdown code fences if present
-      const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const cleaned = response.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       parsed = JSON.parse(cleaned);
     } catch (parseErr) {
       console.error("[MarketHeadlines] Failed to parse Gemini JSON:", parseErr);
-      console.error("[MarketHeadlines] Raw response:", response.substring(0, 500));
+      console.error("[MarketHeadlines] Raw response:", response.text.substring(0, 500));
       return null;
     }
 

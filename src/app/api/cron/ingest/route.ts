@@ -27,8 +27,8 @@ export async function GET(request: NextRequest) {
   const errors: string[] = [];
 
   // Create ingestion log entry
-  const { data: logEntry } = await supabase
-    .from('ingestion_log')
+  const { data: logEntry } = await (supabase
+    .from('ingestion_log') as any)
     .insert({
       source_name: 'all_sources',
       run_type: 'scheduled',
@@ -44,9 +44,6 @@ export async function GET(request: NextRequest) {
       const newsApiResult = await ingestNewsAPI();
       results.newsApi = newsApiResult;
       console.log(`NewsAPI: ${newsApiResult.itemsNew} new items`);
-      if (newsApiResult.items && Array.isArray(newsApiResult.items)) {
-        console.log('NewsAPI sample items:', newsApiResult.items.slice(0, 3));
-      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'NewsAPI error';
       errors.push(msg);
@@ -59,9 +56,6 @@ export async function GET(request: NextRequest) {
       const finnhubResult = await ingestFinnhub();
       results.finnhub = finnhubResult;
       console.log(`Finnhub: ${finnhubResult.itemsNew} new items`);
-      if (finnhubResult.items && Array.isArray(finnhubResult.items)) {
-        console.log('Finnhub sample items:', finnhubResult.items.slice(0, 3));
-      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Finnhub error';
       errors.push(msg);
@@ -106,8 +100,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Update ingestion log
-    await supabase
-      .from('ingestion_log')
+    await (supabase
+      .from('ingestion_log') as any)
       .update({
         status: errors.length > 0 ? 'completed' : 'completed',
         completed_at: new Date().toISOString(),
@@ -125,8 +119,8 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     // Update log with failure
-    await supabase
-      .from('ingestion_log')
+    await (supabase
+      .from('ingestion_log') as any)
       .update({
         status: 'failed',
         completed_at: new Date().toISOString(),

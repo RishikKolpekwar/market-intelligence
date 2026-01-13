@@ -1,7 +1,7 @@
 "use client";
 
 import { createBrowserClient } from "@/lib/supabase/client";
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -81,7 +81,7 @@ function formatPriceChange(value: number | null | undefined, isPercent: boolean 
   return <span className={color}>{formatted}</span>;
 }
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const [user, setUser] = useState<any>(null);
   const [userAssets, setUserAssets] = useState<any[]>([]);
   const [recentNewsCount, setRecentNewsCount] = useState(0);
@@ -907,5 +907,14 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="text-lg">Loading dashboard...</div></div>}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }

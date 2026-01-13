@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Portfolio name is required' }, { status: 400 });
     }
 
-    const { data: portfolio, error } = await supabase
-      .from('portfolios')
+    const { data: portfolio, error } = await (supabase
+      .from('portfolios') as any)
       .insert({
         user_id: user.id,
         name: name.trim(),
@@ -106,8 +106,8 @@ export async function DELETE(request: NextRequest) {
   }
 
   // Check if it's the default portfolio
-  const { data: portfolio } = await supabase
-    .from('portfolios')
+  const { data: portfolio } = await (supabase
+    .from('portfolios') as any)
     .select('is_default')
     .eq('id', portfolioId)
     .eq('user_id', user.id)
@@ -127,15 +127,15 @@ export async function DELETE(request: NextRequest) {
 
   // Move all assets to default portfolio
   if (defaultPortfolio) {
-    await supabase
-      .from('user_assets')
-      .update({ portfolio_id: defaultPortfolio.id })
+    await (supabase
+      .from('user_assets') as any)
+      .update({ portfolio_id: defaultPortfolio })
       .eq('portfolio_id', portfolioId);
   }
 
   // Soft delete the portfolio
-  const { error } = await supabase
-    .from('portfolios')
+  const { error } = await (supabase
+    .from('portfolios') as any)
     .update({ is_active: false })
     .eq('id', portfolioId)
     .eq('user_id', user.id);

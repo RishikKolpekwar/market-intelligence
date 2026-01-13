@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Save the briefing to database
-        await supabase.from('daily_briefings').upsert(
+        await (supabase.from('daily_briefings') as any).upsert(
           {
             user_id: user.id,
             briefing_date: today.toISOString().split('T')[0],

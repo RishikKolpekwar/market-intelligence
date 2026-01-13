@@ -245,8 +245,8 @@ export async function processNewsRelevance(
   for (let i = 0; i < newsItemIds.length; i += batchSize) {
     const batchIds = newsItemIds.slice(i, i + batchSize);
 
-    const { data: newsItems, error: newsError } = await supabase
-      .from('news_items')
+    const { data: newsItems, error: newsError } = await (supabase
+      .from('news_items') as any)
       .select('id, title, summary, mentioned_symbols, mentioned_entities')
       .in('id', batchIds);
 
@@ -269,8 +269,8 @@ export async function processNewsRelevance(
           matched_terms: match.matchedTerms,
         }));
 
-        const { error: insertError } = await supabase
-          .from('news_asset_relevance')
+        const { error: insertError } = await (supabase
+          .from('news_asset_relevance') as any)
           .upsert(relevanceInserts, {
             onConflict: 'news_item_id,asset_id',
           });
@@ -284,7 +284,7 @@ export async function processNewsRelevance(
       }
 
       // Mark news item as processed
-      await supabase.from('news_items').update({ is_processed: true }).eq('id', newsItem.id);
+      await (supabase.from('news_items') as any).update({ is_processed: true }).eq('id', (newsItem as any).id);
 
       processed++;
     }
@@ -307,7 +307,7 @@ export async function processAllUnprocessedNews(): Promise<{
   const cutoffDate = new Date();
   cutoffDate.setHours(cutoffDate.getHours() - 48);
 
-  const { data: unprocessedItems, error } = await supabase
+  const { data: unprocessedItems, error } = await (supabase as any)
     .from('news_items')
     .select('id')
     .eq('is_processed', false)
@@ -323,7 +323,7 @@ export async function processAllUnprocessedNews(): Promise<{
     return { processed: 0, matches: 0, errors: 0 };
   }
 
-  const newsItemIds = unprocessedItems.map((item) => item.id);
+  const newsItemIds = unprocessedItems.map((item: any) => item.id);
   return processNewsRelevance(newsItemIds);
 }
 

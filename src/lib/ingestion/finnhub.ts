@@ -86,8 +86,8 @@ export async function ingestFinnhub(): Promise<IngestionResult> {
 
   try {
     // Get source ID
-    const { data: source } = await supabase
-      .from('news_sources')
+    const { data: source } = await (supabase
+      .from('news_sources') as any)
       .select('id')
       .eq('name', 'Finnhub')
       .single();
@@ -170,8 +170,8 @@ export async function ingestFinnhub(): Promise<IngestionResult> {
         continue;
       }
 
-      const { error } = await supabase.from('news_items').insert({
-        source_id: source?.id,
+      const { error } = await (supabase.from('news_items') as any).insert({
+        source_id: (source as any)?.id,
         source_name: article.sourceName,
         external_id: article.externalId,
         title: article.title,
@@ -199,11 +199,11 @@ export async function ingestFinnhub(): Promise<IngestionResult> {
     }
 
     // Update source last fetch time
-    if (source?.id) {
-      await supabase
-        .from('news_sources')
+    if ((source as any)?.id) {
+      await (supabase
+        .from('news_sources') as any)
         .update({ last_fetch_at: new Date().toISOString() })
-        .eq('id', source.id);
+        .eq('id', (source as any).id);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

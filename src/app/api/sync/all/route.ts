@@ -216,15 +216,17 @@ export async function POST(request: Request) {
         if (!pricesFetched) {
           try {
             const finnhubQuote = await getFinnhubQuote(symbol);
-            if (finnhubQuote && finnhubQuote.currentPrice > 0) {
-              updates.current_price = finnhubQuote.currentPrice;
-              updates.previous_close = finnhubQuote.previousClose;
-              updates.price_change_24h = finnhubQuote.change;
-              updates.price_change_pct_24h = finnhubQuote.changePercent;
-              updates.day_high = finnhubQuote.dayHigh;
-              updates.day_low = finnhubQuote.dayLow;
-              pricesFetched = true;
-              console.log(`[Sync] ${symbol}: ✅ Finnhub: $${finnhubQuote.currentPrice}`);
+            if (finnhubQuote) {
+              if((finnhubQuote.currentPrice ?? 0) > 0){
+                updates.current_price = finnhubQuote.currentPrice;
+                updates.previous_close = finnhubQuote.previousClose;
+                updates.price_change_24h = finnhubQuote.change;
+                updates.price_change_pct_24h = finnhubQuote.changePercent;
+                updates.day_high = finnhubQuote.dayHigh;
+                updates.day_low = finnhubQuote.dayLow;
+                pricesFetched = true;
+                console.log(`[Sync] ${symbol}: ✅ Finnhub: $${finnhubQuote.currentPrice}`);
+              }
             }
           } catch (err) {
             console.error(`[Sync] ${symbol}: ❌ All price APIs failed`);

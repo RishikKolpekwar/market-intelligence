@@ -9,45 +9,10 @@ function getSupabaseWithAuth(request: NextRequest) {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     accessToken = authHeader.replace('Bearer ', '');
   }
+  if (accessToken === null) {
+    return createServerClient();
+  }
   return createServerClient({ accessToken });
-}
-
-/**
- * DELETE /api/user/assets/[id]
- * Remove a specific user_asset entry (delete from a specific fund)
- */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const supabase = getSupabaseWithAuth(request);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { id: userAssetId } = await params;
-
-  if (!userAssetId) {
-    return NextResponse.json({ error: 'user_asset id is required' }, { status: 400 });
-  }
-
-  // Delete the specific user_asset entry
-  const { error } = await supabase
-    .from('user_assets')
-    .delete()
-    .eq('id', userAssetId)
-    .eq('user_id', user.id); // Ensure user owns this asset
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
 }
 
 // Schema for updating user asset
@@ -58,14 +23,25 @@ const updateAssetSchema = z.object({
   average_cost: z.number().optional().nullable(),
 });
 
+// Type matching the user_assets table update fields
+type UserAssetUpdate = {
+  portfolio_percentage?: number;
+  importance_level?: 'low' | 'normal' | 'high' | 'critical';
+  shares_held?: number | null;
+  average_cost?: number | null;
+  notes?: string | null;
+  portfolio_id?: string | null;
+  updated_at?: string;
+};
+
 /**
- * PATCH /api/user/assets/[id]
- * Update a specific user_asset entry (e.g., change allocation percentage)
+ * DELETE /api/user/assets/[id]
+ * Remove a specific user_asset entry (delete from a specific fund)
  */
-export async function PATCH(
+export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  context: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
   const supabase = getSupabaseWithAuth(request);
 
   const {
@@ -76,14 +52,58 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id: userAssetId } = await params;
+  const { id: userAssetId } = await context.params;
+
+  if (!userAssetId) {
+    return NextResponse.json({ error: 'user_asset id is required' }, { status: 400 });
+  }
+
+  // Delete the specific user_asset entry
+  const { error } = await supabase
+    .from('user_assets')
+    .delete()
+    .eq('id', userAssetId)
+    .eq('user_id', user.id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}
+
+/**
+ * PATCH /api/user/assets/[id]
+ * Update a specific user_asset entry (e.g., change allocation percentage)
+ */
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
+  const supabase = getSupabaseWithAuth(request);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { id: userAssetId } = await context.params;
 
   if (!userAssetId) {
     return NextResponse.json({ error: 'user_asset id is required' }, { status: 400 });
   }
 
   // Parse and validate request body
-  const body = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
   const parsed = updateAssetSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -94,7 +114,8 @@ export async function PATCH(
   }
 
   // Build update object with only provided fields
-  const updateData: Record<string, unknown> = {};
+  const updateData: UserAssetUpdate = {};
+
   if (parsed.data.portfolio_percentage !== undefined) {
     updateData.portfolio_percentage = parsed.data.portfolio_percentage;
   }
@@ -115,9 +136,9 @@ export async function PATCH(
   // Update the user_asset entry
   const { data: updatedAsset, error } = await supabase
     .from('user_assets')
-    .update(updateData)
+    .update(updateData as never)
     .eq('id', userAssetId)
-    .eq('user_id', user.id) // Ensure user owns this asset
+    .eq('user_id', user.id)
     .select(`
       id,
       portfolio_percentage,

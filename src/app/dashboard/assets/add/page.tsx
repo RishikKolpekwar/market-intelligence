@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createBrowserClient } from '@/lib/supabase/client';
@@ -12,7 +12,7 @@ interface SearchResult {
   exchange?: string;
 }
 
-export default function AddAssetPage() {
+function AddAssetPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const portfolioId = searchParams.get('portfolio');
@@ -44,7 +44,7 @@ export default function AddAssetPage() {
             .select('name')
             .eq('id', portfolioId)
             .single()
-            .then(({ data }) => {
+            .then(({ data }: { data: { name: string } | null }) => {
               if (data) setPortfolioName(data.name);
             });
         }
@@ -317,5 +317,13 @@ export default function AddAssetPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AddAssetPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="text-lg">Loading...</div></div>}>
+      <AddAssetPageContent />
+    </Suspense>
   );
 }
