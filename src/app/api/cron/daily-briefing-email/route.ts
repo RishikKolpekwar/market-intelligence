@@ -31,11 +31,16 @@ function getBriefingDateYYYYMMDD(timeZone: string): { dateStr: string; dateObj: 
  */
 export async function GET(request: NextRequest) {
   // Allow Vercel Cron OR manual Bearer testing
-  // Note: Vercel sends "true" not "1" for x-vercel-cron header
-  const vercelCron = request.headers.get("x-vercel-cron") === "true";
+  // Vercel cron can be identified by:
+  // 1. x-vercel-cron header (value "1" or "true" depending on version)
+  // 2. User-Agent: vercel-cron/1.0
+  const cronHeader = request.headers.get("x-vercel-cron");
+  const userAgent = request.headers.get("user-agent") || "";
   const authHeader = request.headers.get("authorization");
 
-  if (!vercelCron && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const isVercelCron = cronHeader === "1" || cronHeader === "true" || userAgent.includes("vercel-cron");
+
+  if (!isVercelCron && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
