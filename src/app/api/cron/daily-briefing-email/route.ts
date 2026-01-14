@@ -61,7 +61,8 @@ export async function GET(request: NextRequest) {
 
     const { data: users, error: usersError } = await supabase
       .from("users")
-      .select("id, email, full_name, timezone");
+      .select("id, email, full_name, timezone")
+      .order("created_at", { ascending: false });
 
     if (usersError) {
       console.error("[Cron] Error fetching users:", usersError);
@@ -75,11 +76,9 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Cron] Found ${users.length} users to send emails to`);
 
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (const user of users) {
-      try {
+    // Process all users in parallel to avoid timeout
+    const results = await Promise.allSettled(
+      users.map(async (user) => {
         console.log(`[Cron] Processing user: ${user.email}`);
 
         const userTimezone = user.timezone || "America/New_York";
@@ -108,9 +107,7 @@ export async function GET(request: NextRequest) {
 
         if (!generateResponse.ok) {
           const txt = await generateResponse.text().catch(() => "");
-          console.error(`[Cron] Failed to generate briefing for ${user.email}`, txt);
-          failureCount++;
-          continue;
+          throw new Error(`Failed to generate briefing: ${txt}`);
         }
 
         // Fetch the generated briefing with all data
@@ -122,15 +119,11 @@ export async function GET(request: NextRequest) {
           .single();
 
         if (briefingErr) {
-          console.error(`[Cron] Error fetching briefing for ${user.email}:`, briefingErr);
-          failureCount++;
-          continue;
+          throw new Error(`Error fetching briefing: ${briefingErr.message}`);
         }
 
         if (!briefingData) {
-          console.error(`[Cron] Briefing not found after generation for ${user.email}`);
-          failureCount++;
-          continue;
+          throw new Error(`Briefing not found after generation`);
         }
 
         const formattedDate = new Intl.DateTimeFormat("en-US", {
@@ -163,12 +156,19 @@ export async function GET(request: NextRequest) {
         });
 
         console.log(`[Cron] ✅ Email sent successfully to ${user.email}`);
-        successCount++;
-      } catch (userError) {
-        console.error(`[Cron] Error processing user ${user.email}:`, userError);
-        failureCount++;
+        return user.email;
+      })
+    );
+
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failureCount = results.filter((r) => r.status === "rejected").length;
+
+    // Log failures
+    results.forEach((result, i) => {
+      if (result.status === "rejected") {
+        console.error(`[Cron] Error processing user ${users[i].email}:`, result.reason);
       }
-    }
+    });
 
     console.log(
       `[Cron] Daily briefing email job complete. Success: ${successCount}, Failed: ${failureCount}`
