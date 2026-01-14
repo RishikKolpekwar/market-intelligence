@@ -3,6 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { sendBriefingEmail } from "@/lib/email/mailersend";
 import { generateBriefingEmailHtml } from "@/lib/email/briefing-template";
 
+// Vercel serverless config - required for cron jobs that take longer than 10s
+export const runtime = 'nodejs';
+export const maxDuration = 300; // 5 minutes max
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -27,7 +31,8 @@ function getBriefingDateYYYYMMDD(timeZone: string): { dateStr: string; dateObj: 
  */
 export async function GET(request: NextRequest) {
   // Allow Vercel Cron OR manual Bearer testing
-  const vercelCron = request.headers.get("x-vercel-cron") === "1";
+  // Note: Vercel sends "true" not "1" for x-vercel-cron header
+  const vercelCron = request.headers.get("x-vercel-cron") === "true";
   const authHeader = request.headers.get("authorization");
 
   if (!vercelCron && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -41,7 +46,13 @@ export async function GET(request: NextRequest) {
 
   try {
     console.log("[Cron] Starting daily briefing email job...");
-    console.log("[Cron] supabase.from type:", typeof (supabase as any).from); // should be "function"
+    console.log("[Cron] Environment check:", {
+      hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
+      hasSiteUrl: !!process.env.NEXT_PUBLIC_SITE_URL,
+      hasCronSecret: !!process.env.CRON_SECRET,
+      hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      hasMailerSendKey: !!process.env.MAILERSEND_API_KEY,
+    });
 
     const { data: users, error: usersError } = await supabase
       .from("users")
@@ -73,7 +84,7 @@ export async function GET(request: NextRequest) {
         console.log(`[Cron] Generating briefing for ${user.email} (date: ${briefingDate})`);
 
         const generateUrl = `${
-          process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+          process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
         }/api/briefing/generate`;
 
         // IMPORTANT: your /api/briefing/generate should accept either:
@@ -135,7 +146,7 @@ export async function GET(request: NextRequest) {
         const emailHtml = generateBriefingEmailHtml(
           briefingDataParsed,
           formattedDate,
-          process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+          process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
           briefingDateObj
         );
 

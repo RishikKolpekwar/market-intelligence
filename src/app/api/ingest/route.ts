@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { ingestNewsAPI } from '@/lib/ingestion/newsapi';
 import { ingestFinnhub } from '@/lib/ingestion/finnhub';
 import { ingestTiingo } from '@/lib/ingestion/tiingo';
@@ -9,15 +9,27 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 /**
  * Manual ingestion endpoint - allows triggering news ingestion from the dashboard
+ * Also supports cron job calls via x-cron-secret or Bearer token auth
  * POST /api/ingest
  */
-export async function POST() {
-  const supabase = await createServerSupabaseClient();
-  
-  // Check if user is authenticated
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function POST(request: NextRequest) {
+  // Check for cron secret (for internal server-to-server calls)
+  const cronSecret = request.headers.get("x-cron-secret") || "";
+  const authHeader = request.headers.get("authorization") || "";
+  const bearerToken = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7) : "";
+
+  const isCronJob = !!process.env.CRON_SECRET && (
+    cronSecret === process.env.CRON_SECRET ||
+    bearerToken === process.env.CRON_SECRET
+  );
+
+  if (!isCronJob) {
+    // Regular user request - require user authentication
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
   }
 
   const startTime = Date.now();
