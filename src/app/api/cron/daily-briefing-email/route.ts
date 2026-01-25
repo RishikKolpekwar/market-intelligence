@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendBriefingEmail } from "@/lib/email/mailersend";
+import { sendBriefingEmail } from "@/lib/email/resend";
 import { generateBriefingEmailHtml } from "@/lib/email/briefing-template";
 
 // Vercel serverless config - required for cron jobs that take longer than 10s
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       hasSiteUrl: !!process.env.NEXT_PUBLIC_SITE_URL,
       hasCronSecret: !!process.env.CRON_SECRET,
       hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      hasMailerSendKey: !!process.env.MAILERSEND_API_KEY,
+      hasResendKey: !!process.env.RESEND_API_KEY,
     });
 
     const { data: users, error: usersError } = await supabase

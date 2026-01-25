@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendBriefingEmail } from '@/lib/email/mailersend';
+import { sendBriefingEmail } from '@/lib/email/resend';
 import { generateBriefingEmailHtml } from '@/lib/email/briefing-template';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

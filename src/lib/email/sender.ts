@@ -1,15 +1,13 @@
-import { MailerSend, EmailParams, Sender, Recipient } from 'mailersend';
+import { Resend } from 'resend';
 import { render } from '@react-email/components';
 import DailyBriefingEmail from '@/emails/daily-briefing';
 import { createServerClient } from '@/lib/supabase/client';
 import React from 'react';
 
-const mailersend = new MailerSend({
-  apiKey: process.env.MAILERSEND_API_KEY || '',
-});
+const resend = new Resend(process.env.RESEND_API_KEY || '');
 
-const FROM_EMAIL = process.env.MAILERSEND_FROM_EMAIL || 'briefings@yourdomain.com';
-const FROM_NAME = process.env.MAILERSEND_FROM_NAME || 'Market Intelligence';
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || process.env.MAILERSEND_FROM_EMAIL || 'briefings@yourdomain.com';
+const FROM_NAME = process.env.RESEND_FROM_NAME || process.env.MAILERSEND_FROM_NAME || 'Market Intelligence';
 
 interface SendBriefingEmailParams {
   userId: string;
@@ -42,7 +40,7 @@ interface SendBriefingEmailParams {
  */
 export async function sendBriefingEmail(params: SendBriefingEmailParams): Promise<{
   success: boolean;
-  mailersendId?: string;
+  messageId?: string;
   error?: string;
 }> {
   const supabase = createServerClient();
@@ -59,7 +57,7 @@ export async function sendBriefingEmail(params: SendBriefingEmailParams): Promis
 
   if ((existingLog as any)?.status === 'sent') {
     console.log(`Email already sent for user ${params.userId} on ${dateKey}`);
-    return { success: true, mailersendId: existingLog.id };
+    return { success: true, messageId: existingLog.id };
   }
 
   // Create or update the send log entry (pending)
@@ -101,17 +99,25 @@ export async function sendBriefingEmail(params: SendBriefingEmailParams): Promis
       notableHeadlines: params.notableHeadlines,
       unsubscribeUrl: `${process.env.NEXT_PUBLIC_APP_URL}/settings/unsubscribe?user=${params.userId}`,
     });
-    
+
     const emailHtml = await render(emailElement);
 
-    // Send via MailerSend
-    const emailParams = new EmailParams()
-      .setFrom(new Sender(FROM_EMAIL, FROM_NAME))
-      .setTo([new Recipient(params.userEmail, params.userName)])
-      .setSubject(`Daily Market Briefing - ${dateKey}`)
-      .setHtml(emailHtml);
+    // Format recipient with name if provided
+    const recipient = params.userName
+      ? `${params.userName} <${params.userEmail}>`
+      : params.userEmail;
 
-    const response = await mailersend.email.send(emailParams);
+    // Send via Resend
+    const { data, error } = await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_EMAIL}>`,
+      to: [recipient],
+      subject: `Daily Market Briefing - ${dateKey}`,
+      html: emailHtml,
+    });
+
+    if (error) {
+      throw error;
+    }
 
     // Update log with success
     await (supabase
@@ -119,13 +125,13 @@ export async function sendBriefingEmail(params: SendBriefingEmailParams): Promis
       .update({
         status: 'sent',
         sent_at: new Date().toISOString(),
-        mailersend_id: response.headers?.['x-message-id'] || (logEntry as any)?.id,
+        mailersend_id: data?.id || (logEntry as any)?.id,
       })
       .eq('id', (logEntry as any)?.id);
 
     return {
       success: true,
-      mailersendId: response.headers?.['x-message-id'] || logEntry?.id,
+      messageId: data?.id || logEntry?.id,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
