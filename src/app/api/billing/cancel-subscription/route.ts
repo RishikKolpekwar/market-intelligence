@@ -1,6 +1,6 @@
 /**
  * Cancel Subscription API Route
- * 
+ *
  * This endpoint cancels a user's subscription at the end of the current billing period.
  * Users can only cancel through this endpoint (not via Stripe Customer Portal).
  */
@@ -17,24 +17,19 @@ export async function POST(request: NextRequest) {
     // 1. Authenticate the user
     const supabase = await createServerSupabaseClient();
     const authHeader = request.headers.get('authorization');
-    
+
     if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get user from Supabase
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // 2. Get user's active subscription
@@ -48,30 +43,26 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (subError || !subscriptionData) {
-      return NextResponse.json(
-        { error: 'No active subscription found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
     }
 
-    // Cast to expected shape
-    const subscription = subscriptionData as { stripe_subscription_id: string; status: string };
+    const subscription = subscriptionData as {
+      stripe_subscription_id: string;
+      status: string;
+    };
 
     // 3. Cancel the subscription
-    // For trial users: cancel immediately (they haven't paid)
-    // For paid users: cancel at period end (they've already paid for this period)
     const isTrial = subscription.status === 'trialing';
 
-    let stripeSubscription;
+    let stripeSubscription: any;
+
     if (isTrial) {
       // Immediately cancel trial
-      stripeSubscription = await stripe.subscriptions.cancel(
-        subscription.stripe_subscription_id
-      );
+      stripeSubscription = await stripe.subscriptions.cancel(subscription.stripe_subscription_id);
 
       // Update database to canceled
-      await supabase
-        .from('subscriptions')
+      await (supabase
+        .from('subscriptions') as any)
         .update({
           status: 'canceled',
           cancel_at_period_end: false,
@@ -80,16 +71,13 @@ export async function POST(request: NextRequest) {
         .eq('stripe_subscription_id', subscription.stripe_subscription_id);
     } else {
       // Cancel at period end for paid subscriptions
-      stripeSubscription = await stripe.subscriptions.update(
-        subscription.stripe_subscription_id,
-        {
-          cancel_at_period_end: true,
-        }
-      );
+      stripeSubscription = await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+        cancel_at_period_end: true,
+      });
 
       // Update database
-      await supabase
-        .from('subscriptions')
+      await (supabase
+        .from('subscriptions') as any)
         .update({
           cancel_at_period_end: true,
           updated_at: new Date().toISOString(),
@@ -104,9 +92,9 @@ export async function POST(request: NextRequest) {
         : 'Subscription will be canceled at the end of the current billing period',
       cancel_at: isTrial
         ? new Date().toISOString()
-        : ((stripeSubscription as any).current_period_end
-            ? new Date((stripeSubscription as any).current_period_end * 1000).toISOString()
-            : null),
+        : stripeSubscription?.current_period_end
+          ? new Date(stripeSubscription.current_period_end * 1000).toISOString()
+          : null,
       immediate: isTrial,
     });
   } catch (error: any) {

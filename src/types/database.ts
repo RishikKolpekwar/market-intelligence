@@ -14,6 +14,35 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+        subscriptions: {
+          Row: {
+          id: string;
+          user_id: string;
+          stripe_subscription_id: string;
+          status: string;
+          cancel_at_period_end: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          stripe_subscription_id: string;
+          status?: string;
+          cancel_at_period_end?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          stripe_subscription_id?: string;
+          status?: string;
+          cancel_at_period_end?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       users: {
         Row: {
           id: string;
@@ -23,6 +52,7 @@ export interface Database {
           email_enabled: boolean;
           email_frequency: 'daily' | 'weekly' | 'disabled';
           preferred_send_hour: number;
+          is_free_account: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -34,6 +64,7 @@ export interface Database {
           email_enabled?: boolean;
           email_frequency?: 'daily' | 'weekly' | 'disabled';
           preferred_send_hour?: number;
+          is_free_account?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -45,6 +76,7 @@ export interface Database {
           email_enabled?: boolean;
           email_frequency?: 'daily' | 'weekly' | 'disabled';
           preferred_send_hour?: number;
+          is_free_account?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -487,3 +519,7 @@ export type NewsItemInsert = Database['public']['Tables']['news_items']['Insert'
 export type NewsAssetRelevanceInsert = Database['public']['Tables']['news_asset_relevance']['Insert'];
 export type EmailSendLogInsert = Database['public']['Tables']['email_send_log']['Insert'];
 export type DailyBriefingInsert = Database['public']['Tables']['daily_briefings']['Insert'];
+export type Subscription = Database['public']['Tables']['subscriptions']['Row'];
+export type SubscriptionInsert = Database['public']['Tables']['subscriptions']['Insert'];
+export type SubscriptionUpdate = Database['public']['Tables']['subscriptions']['Update'];
+

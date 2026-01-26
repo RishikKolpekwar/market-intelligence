@@ -4,7 +4,19 @@ import DailyBriefingEmail from '@/emails/daily-briefing';
 import { createServerClient } from '@/lib/supabase/client';
 import React from 'react';
 
-const resend = new Resend(process.env.RESEND_API_KEY || '');
+// Lazy initialization to avoid build-time errors
+let resendInstance: Resend | null = null;
+
+function getResend() {
+  if (!resendInstance) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error('Missing RESEND_API_KEY environment variable');
+    }
+    resendInstance = new Resend(apiKey);
+  }
+  return resendInstance;
+}
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || process.env.MAILERSEND_FROM_EMAIL || 'briefings@yourdomain.com';
 const FROM_NAME = process.env.RESEND_FROM_NAME || process.env.MAILERSEND_FROM_NAME || 'Market Intelligence';
@@ -108,6 +120,7 @@ export async function sendBriefingEmail(params: SendBriefingEmailParams): Promis
       : params.userEmail;
 
     // Send via Resend
+    const resend = getResend();
     const { data, error } = await resend.emails.send({
       from: `${FROM_NAME} <${FROM_EMAIL}>`,
       to: [recipient],

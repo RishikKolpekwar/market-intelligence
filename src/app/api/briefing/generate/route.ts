@@ -108,6 +108,46 @@ export async function POST(request: Request) {
     }
   }
 
+  // ✅ VALIDATION: Check if user has access (active/trialing subscription OR is_free_account = true)
+  // User can access if:
+  // 1. They have an active or trialing subscription, OR
+  // 2. They have is_free_account = true in the users table
+  // Users with only canceled subscriptions and is_free_account = false cannot access
+  
+  // Check for active/trialing subscription
+  const { data: activeSubscription } = await (supabase
+    .from('subscriptions') as any)
+    .select('status')
+    .eq('user_id', user!.id)
+    .in('status', ['active', 'trialing'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  // Check is_free_account from users table
+  const { data: userRecord } = await (supabase
+    .from('users') as any)
+    .select('is_free_account')
+    .eq('id', user!.id)
+    .single();
+
+  const hasActiveSubscription = activeSubscription && 
+    (activeSubscription.status === 'active' || activeSubscription.status === 'trialing');
+  const isFreeAccount = userRecord?.is_free_account === true;
+  
+  if (!hasActiveSubscription && !isFreeAccount) {
+    console.log(`[Briefing] Access denied for user ${user!.id}: No active subscription and is_free_account = false`);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: "Access denied. You need an active subscription or free account to generate briefings." 
+      },
+      { status: 403 }
+    );
+  }
+
+  console.log(`[Briefing] Access granted for user ${user!.id}: ${hasActiveSubscription ? 'Active subscription' : 'Free account (is_free_account=true)'}`);
+
   const startTime = Date.now();
 
   const { searchParams } = new URL(request.url);

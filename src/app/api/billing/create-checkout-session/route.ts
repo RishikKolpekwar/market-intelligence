@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Get or create user record in public.users table
-    const { data: userRecord, error: userError } = await supabase
-      .from('users')
+    const { data: userRecord, error: userError } = await (supabase
+      .from('users') as any)
       .select('id, email, stripe_customer_id, has_used_trial')
       .eq('id', user.id)
       .single();
@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
 
     // Create user record if it doesn't exist
     if (!userRecord) {
-      const { error: insertError } = await supabase
-        .from('users')
+      const { error: insertError } = await (supabase
+        .from('users') as any)
         .insert({
           id: user.id,
           email: user.email || '',
@@ -91,8 +91,8 @@ export async function POST(request: NextRequest) {
       customerId = customer.id;
 
       // Save customer ID to database
-      await supabase
-        .from('users')
+      await (supabase
+        .from('users') as any)
         .update({ stripe_customer_id: customerId })
         .eq('id', user.id);
     }

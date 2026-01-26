@@ -74,13 +74,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, sent: 0, message: "No users to email" });
     }
 
-    // Filter users: only free accounts or those with active/trialing subscription
-    const eligibleUsers = [];
+    // Filter users: only those with active/trialing subscription OR is_free_account = true
+    const eligibleUsers: Array<{
+      id: string;
+      email: string;
+      full_name?: string;
+      timezone?: string;
+      is_free_account?: boolean;
+    }> = [];
     for (const user of users) {
-      if (user.is_free_account) {
+      // Check if user is a free account
+      if (user.is_free_account === true) {
         eligibleUsers.push(user);
         continue;
       }
+      
       // Check for active/trialing subscription
       const { data: subscription } = await supabase
         .from("subscriptions")
@@ -90,6 +98,8 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
+      
+      // Include user if they have an active/trialing subscription
       if (subscription && (subscription.status === "active" || subscription.status === "trialing")) {
         eligibleUsers.push(user);
       }

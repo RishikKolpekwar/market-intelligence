@@ -35,24 +35,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if user has a free account
-    const { data: userRecord } = await supabase
-      .from('users')
-      .select('is_free_account')
-      .eq('id', user.id)
-      .single();
-
-    const isFreeAccount = (userRecord as any)?.is_free_account === true;
-
     // Get user's subscription
-    const { data: subscription, error: subError } = await supabase
-      .from('subscriptions')
+    const { data: subscription, error: subError } = await (supabase
+      .from('subscriptions') as any)
       .select('*')
       .eq('user_id', user.id)
       .in('status', ['active', 'trialing'])
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
+
+    // Check if user has a free account (no subscription means free account)
+    const isFreeAccount = !subscription;
 
     if (subError && subError.code !== 'PGRST116') { // PGRST116 = not found
       console.error('Error fetching subscription:', subError);
