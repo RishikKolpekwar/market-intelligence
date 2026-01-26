@@ -1,21 +1,42 @@
 'use client';
 
 import { createBrowserClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, Suspense } from 'react';
 
-export default function LoginPage() {
+function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || searchParams.get('next');
+  const message = searchParams.get('message');
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     const supabase = createBrowserClient();
 
+    // Force localhost in development to avoid Supabase redirecting to production
+    // Make sure to add http://localhost:3000/auth/callback to Supabase Dashboard → Authentication → URL Configuration
+    const isLocalhost = window.location.hostname === 'localhost' ||
+                        window.location.hostname === '127.0.0.1' ||
+                        window.location.hostname.includes('localhost');
+    
+    const origin = isLocalhost 
+      ? `http://localhost:${window.location.port || '3000'}`
+      : window.location.origin;
+
+    // Build callback URL with redirect parameter if present
+    let callbackUrl = `${origin}/auth/callback`;
+    if (redirectTo) {
+      callbackUrl += `?redirect=${encodeURIComponent(redirectTo)}`;
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: callbackUrl,
+        // Skip PKCE to use implicit flow (hash tokens) - avoids code verifier storage issues
+        skipBrowserRedirect: false,
       },
     });
 
@@ -39,6 +60,14 @@ export default function LoginPage() {
             Get personalized daily market briefings
           </p>
         </div>
+
+        {message === 'subscription_canceled' && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-sm text-yellow-800">
+              Your subscription has been canceled. Sign in again to resubscribe.
+            </p>
+          </div>
+        )}
 
         <div className="mt-8 space-y-6">
           <button
@@ -108,5 +137,17 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-lg">Loading...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

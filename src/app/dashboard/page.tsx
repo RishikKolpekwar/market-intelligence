@@ -446,6 +446,26 @@ function DashboardPageContent() {
         return;
       }
 
+      // Check subscription status before allowing dashboard access
+      try {
+        const subRes = await fetchWithAuth("/api/billing/subscription", {}, session.access_token);
+        if (subRes.ok) {
+          const subData = await subRes.json();
+          if (!subData.hasActiveSubscription) {
+            router.replace("/subscribe");
+            return;
+          }
+        } else {
+          // If subscription check fails, redirect to subscribe page to be safe
+          router.replace("/subscribe");
+          return;
+        }
+      } catch (err) {
+        console.error("Error checking subscription:", err);
+        router.replace("/subscribe");
+        return;
+      }
+
       setUser(session.user);
       accessTokenRef.current = session.access_token;
 
@@ -489,6 +509,12 @@ function DashboardPageContent() {
           <div className="flex justify-between items-center">
             <h1 className="text-xl font-bold text-gray-900">📈 Market Intelligence</h1>
             <div className="flex items-center gap-4">
+              <Link
+                href="/dashboard/settings"
+                className="text-sm text-gray-600 hover:text-blue-600 transition-colors"
+              >
+                Settings
+              </Link>
               <span className="text-sm text-gray-600">{user.email}</span>
             </div>
           </div>
@@ -509,11 +535,11 @@ function DashboardPageContent() {
                 if (newPortfolioId) router.push(`/dashboard?portfolio=${newPortfolioId}`);
                 else router.push("/dashboard");
               }}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">All Portfolios</option>
+              <option value="" className="text-gray-900">All Portfolios</option>
               {portfolios.map((p) => (
-                <option key={p.id} value={p.id}>
+                <option key={p.id} value={p.id} className="text-gray-900">
                   {p.icon} {p.name} {p.is_default ? "(Default)" : ""}
                 </option>
               ))}

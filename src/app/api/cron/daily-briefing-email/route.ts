@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
 
     const { data: users, error: usersError } = await supabase
       .from("users")
-      .select("id, email, full_name, timezone")
+      .select("id, email, full_name, timezone, is_free_account")
       .order("created_at", { ascending: false });
 
     if (usersError) {
@@ -74,11 +74,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, sent: 0, message: "No users to email" });
     }
 
-    console.log(`[Cron] Found ${users.length} users to send emails to`);
+    // Filter users: only free accounts or those with active/trialing subscription
+    const eligibleUsers = [];
+    for (const user of users) {
+      if (user.is_free_account) {
+        eligibleUsers.push(user);
+        continue;
+      }
+      // Check for active/trialing subscription
+      const { data: subscription } = await supabase
+        .from("subscriptions")
+        .select("status")
+        .eq("user_id", user.id)
+        .in("status", ["active", "trialing"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (subscription && (subscription.status === "active" || subscription.status === "trialing")) {
+        eligibleUsers.push(user);
+      }
+    }
 
-    // Process all users in parallel to avoid timeout
+    console.log(`[Cron] Found ${eligibleUsers.length} eligible users to send emails to`);
+
+    // Process all eligible users in parallel to avoid timeout
     const results = await Promise.allSettled(
-      users.map(async (user) => {
+      eligibleUsers.map(async (user) => {
         console.log(`[Cron] Processing user: ${user.email}`);
 
         const userTimezone = user.timezone || "America/New_York";

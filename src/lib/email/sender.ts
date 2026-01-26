@@ -175,6 +175,7 @@ export async function sendNoNewsBriefing(
 
 /**
  * Get users who are due for an email at the current hour
+ * Only includes users with active or trialing subscriptions
  */
 export async function getUsersDueForEmail(
   currentHourUTC: number
@@ -195,6 +196,7 @@ export async function getUsersDueForEmail(
   // 2. Have daily frequency
   // 3. Prefer this hour for sending
   // 4. Haven't received today's email yet
+  // 5. Have an active or trialing subscription
   const { data: users, error } = await supabase
     .from('users')
     .select('id, email, full_name, timezone, preferred_send_hour')
@@ -207,6 +209,14 @@ export async function getUsersDueForEmail(
     return [];
   }
 
+  // Get users with active subscriptions
+  const { data: activeSubscriptions } = await supabase
+    .from('subscriptions')
+    .select('user_id')
+    .in('status', ['active', 'trialing']);
+
+  const activeUserIds = new Set((activeSubscriptions || []).map((s: { user_id: string }) => s.user_id));
+
   // Filter out users who already received today's email
   const { data: sentToday } = await supabase
     .from('email_send_log')
@@ -217,5 +227,6 @@ export async function getUsersDueForEmail(
 
   const sentUserIds = new Set((sentToday || []).map((s: { user_id: string }) => s.user_id));
 
-  return users.filter((u: any) => !sentUserIds.has(u.id));
+  // Only return users with active subscriptions who haven't received today's email
+  return users.filter((u: any) => activeUserIds.has(u.id) && !sentUserIds.has(u.id));
 }
