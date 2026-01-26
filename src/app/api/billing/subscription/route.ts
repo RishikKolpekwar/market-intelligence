@@ -45,8 +45,12 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .single();
 
-    // Check if user has a free account (no subscription means free account)
-    const isFreeAccount = !subscription;
+    // Check is_free_account from users table
+    const { data: userRecord } = await (supabase
+      .from('users') as any)
+      .select('is_free_account')
+      .eq('id', user.id)
+      .single();
 
     if (subError && subError.code !== 'PGRST116') { // PGRST116 = not found
       console.error('Error fetching subscription:', subError);
@@ -56,12 +60,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // User has access if they have an active subscription OR a free account
-    const hasActiveSubscription = isFreeAccount || (!!subscription &&
-      (subscription.status === 'active' || subscription.status === 'trialing'));
+    const hasActiveSubscription = subscription && 
+      (subscription.status === 'active' || subscription.status === 'trialing');
+    const isFreeAccount = userRecord?.is_free_account === true;
+
+    // User has access if they have an active subscription OR is_free_account = true
+    const hasAccess = hasActiveSubscription || isFreeAccount;
 
     return NextResponse.json({
-      hasActiveSubscription,
+      hasActiveSubscription: hasAccess,
       subscription: subscription || null,
     });
   } catch (error: any) {
