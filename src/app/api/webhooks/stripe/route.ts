@@ -93,7 +93,7 @@ async function handleSubscriptionChange(
   const { error } = await supabase
     .from('subscriptions')
     .upsert(subscriptionData, {
-      onConflict: 'user_id',
+      onConflict: 'stripe_subscription_id',
     });
 
   if (error) {
