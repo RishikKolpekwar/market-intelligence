@@ -159,8 +159,8 @@ function AddAssetPageContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 flex items-center justify-center">
+        <div className="text-slate-600">Loading...</div>
       </div>
     );
   }
@@ -168,20 +168,20 @@ function AddAssetPageContent() {
   const canAdd = query.trim() && allocation && parseFloat(allocation) >= 0 && parseFloat(allocation) <= 100;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50">
+      <header className="bg-white/70 backdrop-blur-sm border-b border-white/50 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center gap-4">
-            <Link 
-              href={`/dashboard${portfolioId ? `?portfolio=${portfolioId}` : ''}`} 
-              className="text-gray-600 hover:text-gray-900"
+            <Link
+              href={`/dashboard${portfolioId ? `?portfolio=${portfolioId}` : ''}`}
+              className="text-slate-600 hover:text-slate-900 transition-colors"
             >
               ← Back
             </Link>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Add Asset</h1>
+              <h1 className="text-xl font-bold text-slate-900">Add Asset</h1>
               {portfolioName && (
-                <p className="text-sm text-gray-500">Adding to: {portfolioName}</p>
+                <p className="text-sm text-slate-500">Adding to: {portfolioName}</p>
               )}
             </div>
           </div>
@@ -191,29 +191,29 @@ function AddAssetPageContent() {
       <main className="max-w-2xl mx-auto px-4 py-8">
         {/* Success Message */}
         {addedSymbol && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center gap-2 text-green-700">
+          <div className="mb-6 p-4 bg-emerald-50/80 backdrop-blur-sm border border-emerald-200 rounded-xl">
+            <div className="flex items-center gap-2 text-emerald-700">
               <span className="text-xl">✓</span>
               <span className="font-medium">{addedSymbol} added with {allocation}% allocation!</span>
             </div>
-            <p className="text-sm text-green-600 mt-1">Redirecting to dashboard...</p>
+            <p className="text-sm text-emerald-600 mt-1">Redirecting to dashboard...</p>
           </div>
         )}
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="mb-6 p-4 bg-red-50/80 backdrop-blur-sm border border-red-200 rounded-xl">
             <p className="text-red-700">{error}</p>
           </div>
         )}
 
         {/* Add Asset Form */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Add New Asset</h2>
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/50 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Add New Asset</h2>
           
           {/* Ticker Input */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
               Ticker Symbol <span className="text-red-500">*</span>
             </label>
             <div className="flex gap-3">
@@ -226,20 +226,20 @@ function AddAssetPageContent() {
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 placeholder="e.g., AAPL, MSFT, SPY"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
+                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase text-slate-900 placeholder-slate-400 bg-white"
                 disabled={isAdding}
               />
               <button
                 type="button"
                 onClick={handleSearch}
                 disabled={!query.trim() || isSearching}
-                className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isSearching ? '...' : 'Search'}
               </button>
             </div>
             {selectedFromSearch && (
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-slate-500 mt-1">
                 Selected: {selectedFromSearch.name}
               </p>
             )}
@@ -247,18 +247,18 @@ function AddAssetPageContent() {
 
           {/* Search Results */}
           {searchResults.length > 0 && (
-            <div className="mb-4 border border-gray-200 rounded-lg divide-y divide-gray-200 max-h-48 overflow-y-auto">
+            <div className="mb-4 border border-slate-200 rounded-xl divide-y divide-slate-200 max-h-48 overflow-y-auto bg-white">
               {searchResults.map((result) => (
                 <button
                   key={result.symbol}
                   onClick={() => handleSelectFromSearch(result)}
-                  className="w-full p-3 flex items-center justify-between hover:bg-gray-50 text-left"
+                  className="w-full p-3 flex items-center justify-between hover:bg-blue-50 text-left transition-colors"
                 >
                   <div>
-                    <div className="font-semibold text-gray-900">{result.symbol}</div>
-                    <div className="text-sm text-gray-500">{result.name}</div>
+                    <div className="font-semibold text-slate-900">{result.symbol}</div>
+                    <div className="text-sm text-slate-500">{result.name}</div>
                   </div>
-                  <span className="text-xs text-gray-400">{result.type}</span>
+                  <span className="text-xs text-slate-400">{result.type}</span>
                 </button>
               ))}
             </div>
@@ -266,7 +266,7 @@ function AddAssetPageContent() {
 
           {/* Allocation Input */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
               Portfolio Allocation % <span className="text-red-500">*</span>
             </label>
             <div className="flex items-center gap-2">
@@ -279,12 +279,12 @@ function AddAssetPageContent() {
                 min="0"
                 max="100"
                 step="0.01"
-                className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-32 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900 placeholder-slate-400 bg-white"
                 disabled={isAdding}
               />
-              <span className="text-gray-600 font-medium">%</span>
+              <span className="text-slate-600 font-medium">%</span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Enter the target percentage of your portfolio for this asset (0-100).
               Total allocation can exceed 100% across all assets.
             </p>
@@ -294,21 +294,21 @@ function AddAssetPageContent() {
           <button
             onClick={selectedFromSearch ? handleAddFromSearch : handleDirectAdd}
             disabled={!canAdd || isAdding}
-            className="w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-lg hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
           >
             {isAdding ? 'Adding...' : `Add ${query || 'Asset'} to Portfolio`}
           </button>
         </div>
 
         {/* Popular Assets */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Popular Assets</h2>
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/50 p-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Popular Assets</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'SPY', 'QQQ', 'VTI', 'NVDA'].map((symbol) => (
               <button
                 key={symbol}
                 onClick={() => setQuery(symbol)}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300"
+                className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
               >
                 {symbol}
               </button>

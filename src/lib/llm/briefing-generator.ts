@@ -93,10 +93,7 @@ const PRIMARY_SOURCES = new Set<string>([
   "MarketWatch",
 ]);
 
-// REDUCED: Prevent prompt bloat (was 5/5, now 3/2)
-const MAX_PRIMARY_PER_ASSET = 3;
-const MAX_CONTEXTUAL_PER_ASSET = 2;
-const MAX_TOTAL_ARTICLES = 25; // Further reduced from 40 to ensure reliable prompt size
+const MAX_TOTAL_ARTICLES = 25;
 
 // -------- helpers --------
 
@@ -130,40 +127,92 @@ function clamp(s?: string, max = 280): string | undefined {
   return t.length > max ? t.slice(0, max) + "…" : t;
 }
 
-function calculateArticleLimits(sortedAssets: any[]) {
-  const totalArticlesAvailable = sortedAssets.reduce(
-    (sum, a) => sum + (a.newsItems?.length || 0),
-    0
-  );
-
-  if (totalArticlesAvailable <= MAX_TOTAL_ARTICLES) {
-    // Under limit - use full per-asset limits
-    return {
-      primaryLimit: MAX_PRIMARY_PER_ASSET,
-      contextualLimit: MAX_CONTEXTUAL_PER_ASSET,
-    };
+/**
+ * Allocates exactly MAX_TOTAL_ARTICLES (25) only among assets that have news.
+ * Assets with no news get 0. Leftover from assets that have fewer articles than
+ * their share is redistributed to others that still have more to give.
+ */
+function getArticleLimitsPerAsset(sortedAssets: any[]): number[] {
+  const n = sortedAssets.length;
+  const limits = new Array<number>(n).fill(0);
+  const withNews = sortedAssets
+    .map((a, i) => ({ asset: a, index: i, count: (a.newsItems?.length || 0) }))
+    .filter((x) => x.count > 0);
+  if (withNews.length === 0) return limits;
+  const totalAvailable = withNews.reduce((s, x) => s + x.count, 0);
+  if (totalAvailable <= MAX_TOTAL_ARTICLES) {
+    withNews.forEach((x) => { limits[x.index] = x.count; });
+    return limits;
   }
-
-  // Over limit - reduce proportionally
-  const articlesPerAsset = Math.floor(MAX_TOTAL_ARTICLES / sortedAssets.length);
-  const minPerAsset = Math.max(2, articlesPerAsset); // At least 2 per asset
-
-  // Split between primary (60%) and contextual (40%)
-  const primaryLimit = Math.max(1, Math.floor(minPerAsset * 0.6));
-  const contextualLimit = Math.max(1, minPerAsset - primaryLimit);
-
+  const budget = MAX_TOTAL_ARTICLES;
+  const numWithNews = withNews.length;
+  const basePerAsset = Math.floor(budget / numWithNews);
+  const remainder = budget - basePerAsset * numWithNews;
+  const capByIndex = new Map<number, number>();
+  withNews.forEach((x, i) => {
+    const share = basePerAsset + (i < remainder ? 1 : 0);
+    const actual = Math.min(share, x.count);
+    capByIndex.set(x.index, actual);
+  });
+  let used = 0;
+  withNews.forEach((x) => { used += capByIndex.get(x.index)!; });
+  let leftover = budget - used;
+  while (leftover > 0) {
+    let gave = false;
+    for (const x of withNews) {
+      if (leftover <= 0) break;
+      const current = capByIndex.get(x.index)!;
+      if (current < x.count) {
+        capByIndex.set(x.index, current + 1);
+        leftover--;
+        gave = true;
+      }
+    }
+    if (!gave) break;
+  }
+  withNews.forEach((x) => { limits[x.index] = capByIndex.get(x.index)!; });
   console.log(
-    `[Briefing] Reducing articles: ${totalArticlesAvailable} → ${MAX_TOTAL_ARTICLES}. ` +
-    `Per-asset: ${primaryLimit} primary + ${contextualLimit} contextual`
+    `[Briefing] 25-article allocation: ${withNews.map((x) => `${sortedAssets[x.index].symbol}=${limits[x.index]}`).join(", ")}`
   );
+  return limits;
+}
 
-  return { primaryLimit, contextualLimit };
+/**
+ * For one asset, select up to `limit` articles: primary sources first, then contextual,
+ * each sorted by relevance and recency.
+ */
+function selectArticlesForAsset(
+  newsItems: any[],
+  limit: number
+): { selected: any[]; primary: any[]; contextual: any[] } {
+  if (limit <= 0) return { selected: [], primary: [], contextual: [] };
+  const deduped = dedupeNews(newsItems);
+  const primary = deduped.filter((n) => PRIMARY_SOURCES.has(n.sourceName));
+  const contextual = deduped.filter((n) => !PRIMARY_SOURCES.has(n.sourceName));
+  const sortByScoreThenRecency = (a: any, b: any) => {
+    const scoreDiff = (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0);
+    if (Math.abs(scoreDiff) > 0.05) return scoreDiff;
+    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+  };
+  primary.sort(sortByScoreThenRecency);
+  contextual.sort(sortByScoreThenRecency);
+  const selected: any[] = [];
+  const takePrimary = Math.min(primary.length, limit);
+  for (let i = 0; i < takePrimary; i++) selected.push(primary[i]);
+  const takeContextual = Math.min(contextual.length, limit - selected.length);
+  for (let i = 0; i < takeContextual; i++) selected.push(contextual[i]);
+  const selSet = new Set(selected);
+  return {
+    selected,
+    primary: primary.filter((n) => selSet.has(n)),
+    contextual: contextual.filter((n) => selSet.has(n)),
+  };
 }
 
 function splitPrimaryContextual(
   newsItems: any[],
-  primaryLimit = MAX_PRIMARY_PER_ASSET,
-  contextualLimit = MAX_CONTEXTUAL_PER_ASSET
+  primaryLimit = 10,
+  contextualLimit = 10
 ) {
   const deduped = dedupeNews(newsItems);
 
@@ -392,15 +441,15 @@ async function attemptGroqBriefing(
   newsWindowDays: number,
   startTime: number
 ): Promise<GeneratedBriefing> {
-  // Calculate dynamic limits based on total articles across all assets
-  const { primaryLimit, contextualLimit } = calculateArticleLimits(sortedAssets);
+  const limitsPerAsset = getArticleLimitsPerAsset(sortedAssets);
+  const selectedBySymbol = new Map<string, any[]>();
 
-  const assetsForModel = sortedAssets.map((asset: any) => {
-    const { primary, contextual } = splitPrimaryContextual(
-      asset.newsItems,
-      primaryLimit,
-      contextualLimit
+  const assetsForModel = sortedAssets.map((asset: any, i: number) => {
+    const { primary, contextual, selected } = selectArticlesForAsset(
+      asset.newsItems ?? [],
+      limitsPerAsset[i] ?? 0
     );
+    selectedBySymbol.set(asset.symbol, selected);
 
     return {
       symbol: asset.symbol,
@@ -418,14 +467,14 @@ async function attemptGroqBriefing(
         title: n.title,
         source: n.sourceName,
         publishedAt: new Date(n.publishedAt).toISOString(),
-        snippet: clamp(n.summary, 180), // Further reduced from 280 to 180
+        snippet: clamp(n.summary, 180),
         url: n.url ?? null,
       })),
       contextual: contextual.map((n: any) => ({
         title: n.title,
         source: n.sourceName,
         publishedAt: new Date(n.publishedAt).toISOString(),
-        snippet: clamp(n.summary, 90), // Further reduced from 140 to 90
+        snippet: clamp(n.summary, 90),
         url: n.url ?? null,
       })),
     };
@@ -568,18 +617,30 @@ INSTRUCTIONS:
       summary = buildFallbackAssetSummary(asset);
     }
 
+    // Order articles so the ones we summarized (top by relevance/recency) appear first in the list
+    const allItems = asset.newsItems ?? [];
+    const selectedForAsset = selectedBySymbol.get(asset.symbol) ?? [];
+    const selectedTitles = new Set(selectedForAsset.map((n: any) => normalizeTitle(n.title)));
+    const toLink = (n: any) => ({
+      title: n.title,
+      url: n.url,
+      source: n.sourceName,
+      publishedAt: new Date(n.publishedAt).toISOString(),
+    });
+    const selectedLinks = selectedForAsset.map(toLink);
+    const rest = allItems
+      .filter((n: any) => !selectedTitles.has(normalizeTitle(n.title)))
+      .sort((a: any, b: any) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+      .map(toLink);
+    const newsLinks = [...selectedLinks, ...rest];
+
     return {
     assetId: asset.assetId,
     symbol: asset.symbol,
     name: asset.name,
       summary: summary,
-    newsCount: asset.newsItems.length,
-      newsLinks: asset.newsItems.slice(0, 5).map((n: any) => ({
-        title: n.title,
-        url: n.url,
-        source: n.sourceName,
-        publishedAt: new Date(n.publishedAt).toISOString(),
-      })),
+    newsCount: allItems.length,
+      newsLinks,
     currentPrice: asset.currentPrice,
     priceChange: asset.priceChange24h,
     priceChangePercent: asset.priceChangePct24h,
@@ -609,8 +670,16 @@ INSTRUCTIONS:
       snippet: h.snippet,
     })) ?? [];
 
+  const marketOverviewRaw = (parsed.marketOverview || "").trim();
+  const marketOverview =
+    marketOverviewRaw && marketOverviewRaw !== "Market overview unavailable."
+      ? marketOverviewRaw
+      : macroTop.length > 0
+        ? "Market context: See notable headlines below for macro and general news that may affect your portfolio."
+        : "Market overview unavailable. Review asset summaries above for coverage of your holdings.";
+
   return {
-    marketOverview: (parsed.marketOverview || "").trim() || "Market overview unavailable.",
+    marketOverview,
     assetSummaries,
     notableHeadlines,
     // Keep text as JSON for debugging
@@ -681,6 +750,8 @@ export function generateBasicBriefing(
     if (input.marketOverview.nasdaqChange !== undefined) bits.push(`NASDAQ ${input.marketOverview.nasdaqChange >= 0 ? "+" : ""}${input.marketOverview.nasdaqChange.toFixed(2)}%`);
     if (input.marketOverview.dowChange !== undefined) bits.push(`Dow ${input.marketOverview.dowChange >= 0 ? "+" : ""}${input.marketOverview.dowChange.toFixed(2)}%`);
     if (bits.length) marketOverviewText += bits.join(", ") + ".";
+  } else {
+    marketOverviewText += "Review the asset summaries and notable headlines below for the latest developments.";
   }
 
   const sortedAssets = [...input.assets].sort(
@@ -693,7 +764,7 @@ export function generateBasicBriefing(
       name: asset.name,
     summary: buildFallbackAssetSummary(asset),
     newsCount: (asset.newsItems || []).length,
-    newsLinks: (asset.newsItems || []).slice(0, 5).map((n: any) => ({
+    newsLinks: (asset.newsItems || []).map((n: any) => ({
       title: n.title,
       url: n.url,
       source: n.sourceName,

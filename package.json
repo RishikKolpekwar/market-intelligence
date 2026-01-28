@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "db:generate": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/database.ts",
-    "db:migrate": "supabase db push"
+    "db:migrate": "supabase db push",
+    "test:assets": "tsx scripts/test-asset-edge-cases.ts",
+    "test:assets:quote-only": "tsx scripts/test-asset-edge-cases.ts --quote-only"
   },
   "dependencies": {
     "@react-email/components": "^0.0.22",
@@ -35,5 +37,8 @@
     "typescript": "^5.5.4",
     "yahoo-finance2": "^3.11.2",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
   }
 }

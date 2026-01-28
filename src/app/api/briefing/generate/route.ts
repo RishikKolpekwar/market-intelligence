@@ -5,6 +5,7 @@ import {
   generateDailyBriefing,
   generateEmptyBriefing,
 } from "@/lib/llm/briefing-generator";
+import { getSymbolQuote } from "@/lib/market-data/symbol-lookup";
 import { BriefingInput, AssetWithNews } from "@/types/ingestion";
 import { Database } from "@/types/database";
 
@@ -519,6 +520,26 @@ export async function POST(request: Request) {
       console.log(`[Briefing]   ${a.symbol}: ${a.newsItems.length} news items`);
     });
 
+    // Fetch index % changes for market context in LLM prompt (better overview/summaries)
+    let marketOverviewData: BriefingInput["marketOverview"];
+    try {
+      const [gspc, ixic, dji] = await Promise.all([
+        getSymbolQuote("^GSPC"),
+        getSymbolQuote("^IXIC"),
+        getSymbolQuote("^DJI"),
+      ]);
+      if (gspc?.changePercent != null || ixic?.changePercent != null || dji?.changePercent != null) {
+        marketOverviewData = {
+          sp500Change: gspc?.changePercent ?? undefined,
+          nasdaqChange: ixic?.changePercent ?? undefined,
+          dowChange: dji?.changePercent ?? undefined,
+        };
+        console.log("[Briefing] Market context:", marketOverviewData);
+      }
+    } catch (e) {
+      console.warn("[Briefing] Could not fetch index data for market context:", e);
+    }
+
     const briefingInput: BriefingInput = {
       userId: user!.id,
       userEmail: userProfile?.email || user?.email || "",
@@ -526,6 +547,7 @@ export async function POST(request: Request) {
       briefingDate: today,
       timezone: userProfile?.timezone || "UTC",
       assets,
+      marketOverview: marketOverviewData,
     };
 
     const briefing =

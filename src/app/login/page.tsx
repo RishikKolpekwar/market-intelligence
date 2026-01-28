@@ -15,17 +15,14 @@ function LoginForm() {
     setIsLoading(true);
     const supabase = createBrowserClient();
 
-    // Force localhost in development to avoid Supabase redirecting to production
-    // Make sure to add http://localhost:3000/auth/callback to Supabase Dashboard → Authentication → URL Configuration
     const isLocalhost = window.location.hostname === 'localhost' ||
                         window.location.hostname === '127.0.0.1' ||
                         window.location.hostname.includes('localhost');
-    
-    const origin = isLocalhost 
+
+    const origin = isLocalhost
       ? `http://localhost:${window.location.port || '3000'}`
       : window.location.origin;
 
-    // Build callback URL with redirect parameter if present
     let callbackUrl = `${origin}/auth/callback`;
     if (redirectTo) {
       callbackUrl += `?redirect=${encodeURIComponent(redirectTo)}`;
@@ -35,7 +32,6 @@ function LoginForm() {
       provider: 'google',
       options: {
         redirectTo: callbackUrl,
-        // Skip PKCE to use implicit flow (hash tokens) - avoids code verifier storage issues
         skipBrowserRedirect: false,
       },
     });
@@ -47,38 +43,48 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h1 className="text-center text-3xl font-bold text-gray-900">
-            📈 Market Intelligence
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-50" />
+      <div className="absolute top-0 right-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
+      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
+
+      <div className="relative max-w-lg w-full space-y-10">
+        <div className="text-center">
+          <div className="inline-flex items-center gap-3 px-5 py-3 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-blue-200 text-base sm:text-lg mb-8">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-green-400" />
+            </span>
+            AI-powered market insights
+          </div>
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
+            <span className="text-white">Market </span>
+            <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Intelligence</span>
           </h1>
-          <h2 className="mt-6 text-center text-xl font-semibold text-gray-900">
+          <h2 className="mt-8 text-2xl sm:text-3xl font-semibold text-white">
             Sign in to your account
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-3 text-base sm:text-lg text-slate-300">
             Get personalized daily market briefings
           </p>
         </div>
 
         {message === 'subscription_canceled' && (
-          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-sm text-yellow-800">
-              Your subscription has been canceled. Sign in again to resubscribe.
-            </p>
+          <div className="p-4 bg-amber-500/20 border border-amber-400/30 rounded-xl text-amber-100 text-sm">
+            Your subscription has been canceled. Sign in again to resubscribe.
           </div>
         )}
 
-        <div className="mt-8 space-y-6">
+        <div className="mt-10 space-y-6">
           <button
             onClick={handleGoogleLogin}
             disabled={isLoading}
-            className="group relative w-full flex justify-center py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="group relative w-full flex justify-center py-5 px-6 rounded-xl text-base sm:text-lg font-semibold text-white bg-white/10 backdrop-blur-sm border border-white/20 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-2 focus:ring-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {isLoading ? (
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-3">
                 <svg
-                  className="animate-spin h-5 w-5 text-gray-500"
+                  className="animate-spin h-6 w-6 text-slate-300"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -90,18 +96,18 @@ function LoginForm() {
                     r="10"
                     stroke="currentColor"
                     strokeWidth="4"
-                  ></circle>
+                  />
                   <path
                     className="opacity-75"
                     fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                  />
                 </svg>
                 Signing in...
               </span>
             ) : (
               <span className="flex items-center gap-3">
-                <svg className="h-5 w-5" viewBox="0 0 24 24">
+                <svg className="h-6 w-6 sm:h-7 sm:w-7" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -125,13 +131,13 @@ function LoginForm() {
           </button>
         </div>
 
-        <p className="mt-8 text-center text-xs text-gray-500">
+        <p className="mt-10 text-center text-sm text-slate-400">
           By signing in, you agree to our{' '}
-          <a href="/terms" className="text-blue-600 hover:text-blue-500">
+          <a href="/terms" className="text-cyan-400 hover:text-cyan-300">
             Terms of Service
           </a>{' '}
           and{' '}
-          <a href="/privacy" className="text-blue-600 hover:text-blue-500">
+          <a href="/privacy" className="text-cyan-400 hover:text-cyan-300">
             Privacy Policy
           </a>
         </p>
@@ -143,8 +149,8 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+        <div className="text-lg text-slate-300">Loading...</div>
       </div>
     }>
       <LoginForm />

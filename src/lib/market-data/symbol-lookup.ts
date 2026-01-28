@@ -3,7 +3,7 @@
  * Also exposes Yahoo historical close helpers for 1M / 1Y changes.
  */
 
-import { createServerClient } from "@/lib/supabase/client";
+import { createServerClient, createAdminClient } from "@/lib/supabase/client";
 import { generateAssetKeywords } from "@/lib/utils/asset-type-detector";
 
 export interface SymbolLookupResult {
@@ -284,6 +284,12 @@ async function fetchFinnhubQuote(symbol: string): Promise<SymbolQuote | null> {
   };
 }
 
+/** Coerce to integer for DB columns like BIGINT (market_cap, volume) */
+function toBigIntSafe(value: number | null | undefined): number | null {
+  if (value == null || typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.round(value);
+}
+
 function quoteLooksBad(q: SymbolQuote): boolean {
   // If missing key fields, bad
   if (q.currentPrice == null || q.previousClose == null) return true;
@@ -407,12 +413,14 @@ async function searchSymbolsFallback(query: string): Promise<SymbolLookupResult[
 }
 
 /**
- * Add or update an asset in the database with full metadata
+ * Add or update an asset in the database with full metadata.
+ * Uses admin client so server-side insert/update on assets bypasses RLS
+ * (assets table has SELECT-only policy for anon).
  */
 export async function upsertAssetWithQuote(
   symbol: string
 ): Promise<{ id: string; symbol: string; name: string; type: string } | null> {
-  const supabase = createServerClient();
+  const supabase = createAdminClient();
 
   const { data: existing } = await (supabase
     .from("assets") as any)
@@ -434,8 +442,8 @@ export async function upsertAssetWithQuote(
           day_low: quote.dayLow,
           week_52_high: quote.week52High,
           week_52_low: quote.week52Low,
-          volume: quote.volume,
-          market_cap: quote.marketCap,
+          volume: toBigIntSafe(quote.volume),
+          market_cap: toBigIntSafe(quote.marketCap),
           nav: quote.nav,
           nav_change: quote.navChange,
           last_price_update: new Date().toISOString(),
@@ -451,7 +459,7 @@ export async function upsertAssetWithQuote(
     const type = inferAssetType(symbol);
     const keywords = generateAssetKeywords(symbol.toUpperCase(), symbol.toUpperCase(), type);
 
-    const { data: newAsset } = await (supabase
+    const { data: newAsset, error: insertError } = await (supabase
       .from("assets") as any)
       .insert({
         symbol: symbol.toUpperCase(),
@@ -462,6 +470,10 @@ export async function upsertAssetWithQuote(
       .select("id, symbol, name, asset_type")
       .single();
 
+    if (insertError) {
+      console.error(`[upsertAssetWithQuote] Insert error for ${symbol}:`, insertError);
+    }
+
     return newAsset
       ? { id: newAsset.id, symbol: newAsset.symbol, name: newAsset.name, type: newAsset.asset_type }
       : null;
@@ -469,7 +481,7 @@ export async function upsertAssetWithQuote(
 
   const keywords = generateAssetKeywords(quote.symbol, quote.name, quote.type);
 
-  const { data: newAsset } = await (supabase
+  const { data: newAsset, error: insertError } = await (supabase
     .from("assets") as any)
     .insert({
       symbol: quote.symbol.toUpperCase(),
@@ -485,8 +497,8 @@ export async function upsertAssetWithQuote(
       day_low: quote.dayLow,
       week_52_high: quote.week52High,
       week_52_low: quote.week52Low,
-      volume: quote.volume,
-      market_cap: quote.marketCap,
+      volume: toBigIntSafe(quote.volume),
+      market_cap: toBigIntSafe(quote.marketCap),
       nav: quote.nav,
       nav_change: quote.navChange,
       keywords,
@@ -494,6 +506,10 @@ export async function upsertAssetWithQuote(
     })
     .select("id, symbol, name, asset_type")
     .single();
+
+  if (insertError) {
+    console.error(`[upsertAssetWithQuote] Insert error for ${symbol} with quote:`, insertError);
+  }
 
   return newAsset
     ? { id: newAsset.id, symbol: newAsset.symbol, name: newAsset.name, type: newAsset.asset_type }
