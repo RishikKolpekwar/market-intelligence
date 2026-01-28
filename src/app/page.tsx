@@ -288,10 +288,10 @@ export default function Home() {
       <div id="contact" className="py-24 bg-gradient-to-b from-slate-50 to-white">
         <div className="max-w-xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="text-sm font-semibold text-blue-600 uppercase tracking-wider mb-3">
+            <h2 className="text-sm font-semibold text-black uppercase tracking-wider mb-3">
               Get In Touch
             </h2>
-            <p className="text-4xl font-bold text-slate-900">
+            <p className="text-4xl font-bold text-black">
               Contact Us
             </p>
           </div>
@@ -302,7 +302,7 @@ export default function Home() {
               className="space-y-6"
             >
               <div>
-                <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">
+                <label htmlFor="email" className="block text-sm font-semibold text-black mb-2">
                   Email
                 </label>
                 <input
@@ -311,11 +311,11 @@ export default function Home() {
                   id="email"
                   required
                   placeholder="you@email.com"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-slate-50 focus:bg-white"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-slate-50 focus:bg-white text-black placeholder:text-slate-500"
                 />
               </div>
               <div>
-                <label htmlFor="message" className="block text-sm font-semibold text-slate-700 mb-2">
+                <label htmlFor="message" className="block text-sm font-semibold text-black mb-2">
                   Message
                 </label>
                 <textarea
@@ -324,7 +324,7 @@ export default function Home() {
                   required
                   rows={5}
                   placeholder="Your message here..."
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-y bg-slate-50 focus:bg-white"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-y bg-slate-50 focus:bg-white text-black placeholder:text-slate-500"
                 />
               </div>
               <button
@@ -335,7 +335,7 @@ export default function Home() {
               </button>
             </form>
           </div>
-          <p className="text-center mt-8 text-slate-600">
+          <p className="text-center mt-8 text-black">
             Or email us directly at{' '}
             <a
               href="mailto:rishikkolpekwar@gmail.com"
